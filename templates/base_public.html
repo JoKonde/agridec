@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body %}
+<div class="public-layout">
+  {% include 'partials/navbar.html' %}
+
+  <main class="public-main">
+    <div class="container" style="padding-top: var(--space-xl); padding-bottom: var(--space-xl);">
+      {% include 'partials/messages.html' %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>AgriDec — Agriculture Decision System &copy; {% now "Y" %}</p>
+    </div>
+  </footer>
+</div>
+{% endblock %}

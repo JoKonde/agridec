@@ -1,0 +1,118 @@
+{% extends 'base_app.html' %}
+{% load static %}
+
+{% block title %}Nouvelle culture — AgriDec{% endblock %}
+{% block topbar_title %}Nouvelle culture{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/form-page.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1 class="page-title">Nouvelle culture</h1>
+  <p class="page-subtitle">
+    Enregistrez une culture avec sa localisation GPS automatique.
+  </p>
+</header>
+
+<div class="form-page-card card">
+  <form method="post" class="exploitation-form" id="exploitation-form" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="form-errors">
+      {% for error in form.non_field_errors %}
+      <p>{{ error }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  <!-- Géolocalisation GPS -->
+  <div class="gps-block" id="gps-block">
+    <div class="gps-block-header">
+      <svg class="gps-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>
+      <div>
+        <strong>Localisation GPS</strong>
+        <p class="gps-hint">Votre position est détectée automatiquement — aucune saisie de ville requise.</p>
+      </div>
+    </div>
+    <div class="gps-status gps-status--loading" id="gps-status" role="status" aria-live="polite">
+      <span class="gps-spinner" aria-hidden="true"></span>
+      <span id="gps-status-text">Recherche de votre position…</span>
+    </div>
+    <p class="gps-coords" id="gps-coords" hidden>
+      Lat : <span id="gps-lat-display">—</span> · Lon : <span id="gps-lon-display">—</span>
+    </p>
+    {{ form.latitude }}
+    {{ form.longitude }}
+    {% if form.latitude.errors or form.longitude.errors %}
+    <ul class="field-errors">
+      {% for error in form.latitude.errors %}<li>{{ error }}</li>{% endfor %}
+      {% for error in form.longitude.errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  <!-- Culture -->
+  <div class="form-group">
+    <label for="{{ form.culture.id_for_label }}">{{ form.culture.label }}</label>
+    {{ form.culture }}
+    {% if form.culture.errors %}
+    <ul class="field-errors">{% for e in form.culture.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  <!-- Type de sol -->
+  <div class="form-group">
+    <label for="{{ form.type_sol.id_for_label }}">{{ form.type_sol.label }}</label>
+    {{ form.type_sol }}
+    {% if form.type_sol.errors %}
+    <ul class="field-errors">{% for e in form.type_sol.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  <!-- Statut -->
+  <div class="form-group">
+    <span class="form-label">{{ form.statut.label }}</span>
+    <div class="statut-options">
+      {% for radio in form.statut %}
+      <label class="statut-option">
+        {{ radio.tag }}
+        <span class="statut-option-label">{{ radio.choice_label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% if form.statut.errors %}
+    <ul class="field-errors">{% for e in form.statut.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  <!-- Date -->
+  <div class="form-group">
+    <label for="{{ form.date_semis.id_for_label }}">{{ form.date_semis.label }}</label>
+    {{ form.date_semis }}
+    {% if form.date_semis.help_text %}
+    <small class="help-text">{{ form.date_semis.help_text }}</small>
+    {% endif %}
+    {% if form.date_semis.errors %}
+    <ul class="field-errors">{% for e in form.date_semis.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  <div class="form-actions">
+    <a href="{% url 'dashboard' %}" class="btn btn-ghost">Annuler</a>
+    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+      Enregistrer
+    </button>
+  </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/geolocation.js' %}"></script>
+{% endblock %}

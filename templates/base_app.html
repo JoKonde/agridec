@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body %}
+<div class="app-layout">
+  {% include 'partials/sidebar.html' %}
+
+  <div class="app-main">
+    <header class="app-topbar">
+      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Ouvrir le menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <span class="app-topbar-title">{% block topbar_title %}Dashboard{% endblock %}</span>
+    </header>
+
+    <main class="app-content dashboard-page">
+      {% include 'partials/messages.html' %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer site-footer--app">
+      <p>AgriDec &copy; {% now "Y" %}</p>
+    </footer>
+  </div>
+</div>
+
+<script src="{% static 'js/main.js' %}"></script>
+{% block extra_js %}{% endblock %}
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends 'base_app.html' %}
+
+{% block title %}Historique des analyses — AgriDec{% endblock %}
+{% block topbar_title %}Analyses{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1 class="page-title">Historique des analyses</h1>
+  <p class="page-subtitle">Consultez vos recommandations agricoles passées.</p>
+</header>
+
+{% if analyses %}
+<div class="table-wrapper">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Culture</th>
+        <th>Date d'analyse</th>
+        <th>Semer ?</th>
+        <th>Arroser ?</th>
+        <th>Récolte estimée</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for analyse in analyses %}
+      <tr>
+        <td><strong>{{ analyse.exploitation.culture.nom }}</strong></td>
+        <td>{{ analyse.date_analyse|date:"d/m/Y H:i" }}</td>
+        <td>
+          {% if analyse.resultat.peut_semer.reponse %}
+          <span class="badge badge-success">Oui</span>
+          {% else %}
+          <span class="badge badge-danger">Non</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if analyse.resultat.arroser.reponse %}
+          <span class="badge badge-success">Oui</span>
+          {% else %}
+          <span class="badge">Non</span>
+          {% endif %}
+        </td>
+        <td>{{ analyse.resultat.recolte.date_estimee_affichage|default:"—" }}</td>
+        <td>
+          <a href="{% url 'analyse_detail' analyse.pk %}" class="btn btn-sm btn-secondary">Voir</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Aucune analyse enregistrée pour le moment.</p>
+  <a href="{% url 'dashboard' %}" class="btn btn-primary">Retour au dashboard</a>
+</div>
+{% endif %}
+{% endblock %}

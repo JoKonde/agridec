@@ -1,0 +1,98 @@
+=== AgriDec - Journal de projet ===
+
+--- Session du 25/06/2026 (suite) ---
+Sujet : Plan de développement complet AgriDec
+
+État du projet :
+- Squelette Django 6.0.6 + app `core` vide
+- MySQL configuré (agridec)
+- Cahier des charges reçu : appli d'aide à la décision agricole
+
+Décisions / Plan validé :
+- Architecture : 1 app `core` + services (`weather_service`, `fao_service`, `decision_engine`)
+- Auth personnalisée (pas Django Admin pour l'UI)
+- Frontend : Django Templates + CSS pur + JS Vanilla
+- Pas de ML, pas de LLM — règles métier uniquement
+- Géolocalisation HTML5 obligatoire
+- Développement en 14 étapes séquentielles (voir plan détaillé en session)
+
+Prochaines actions :
+- Projet fonctionnel — déploiement production si besoin
+
+--- Étapes 12–14 terminées (25/06/2026) ---
+Finitions finales :
+- Page historique /analyses/ + détail analyse sauvegardée
+- Pages erreur 404 et 403
+- settings.py : variables d'environnement (SECRET_KEY, DEBUG, DB)
+- .env.example + README.md
+- Tests moteur de décision (API réelles + FAO en base)
+- Sidebar « Analyses » branchée
+- .gitignore (.env, venv, __pycache__)
+- Validation : `python manage.py check` OK, `python manage.py test core` OK (3 tests)
+- README.md réécrit pour GitHub (JoKonde/agirdec) — installation complète, contexte académique
+
+Moteur de décision + page analyse :
+- decision_engine.py : règles métier FAO + météo réelle
+- fao_service : consultation calendrier en base (import API)
+- Vue /cultures/<id>/analyser/ + template analyse.html
+- Historique sauvegardé dans Analyse.resultat (JSON)
+- Pas de ML, pas de LLM, pas de données fictives
+
+Service météo :
+- BaseWeatherService (interface abstraite)
+- OpenMeteoWeatherService (API Open-Meteo, 7 jours)
+- SimulatedWeatherService + fetch_weather() avec fallback
+- Commande : python manage.py test_weather --lat -4.325 --lon 15.322
+- Tests unitaires parsing dans core/tests.py
+
+Formulaire Nouvelle Culture + GPS :
+- ExploitationForm (culture, sol, statut, date, lat/lon cachés)
+- Vue exploitation_create_view → /cultures/nouvelle/
+- Template cultures/form.html + form-page.css
+- geolocation.js (HTML5 Geolocation API, bouton désactivé sans GPS)
+- Validation serveur : GPS obligatoire
+- Liens dashboard et sidebar mis à jour
+
+Templates & CSS fondation :
+- CSS modulaire : variables.css, base.css, layout.css, components.css, pages.css
+- base.html, base_public.html, base_app.html
+- partials/navbar.html, partials/sidebar.html
+- Hero + features + CTA sur home.html
+- Dashboard avec sidebar SaaS, responsive mobile (main.js)
+- Icônes SVG inline (pas de framework)
+
+Authentification personnalisée :
+- RegisterForm, LoginForm (core/forms.py)
+- Vues : register, login, logout, dashboard (@login_required)
+- URLs : /inscription/, /connexion/, /deconnexion/, /dashboard/
+- Templates : base.html, auth/login.html, auth/register.html, dashboard.html
+- CSS minimal base.css (hero, auth, dashboard, messages)
+
+- Suppression des données FAO fictives dans load_initial_data.py
+- Création core/services/fao_service.py (client API FAO)
+- Commande import_fao_data : import réel depuis api-cropcalendar.apps.fao.org (pays CD)
+- Modèle FaoCalendrier enrichi : zone_aez, session_info, pays_code, growing_period_jours
+- Culture.fao_crop_id ajouté ; nom non unique (doublons FAO gérés)
+- Import testé : 29 cultures, 173 calendriers RDC
+
+Commandes :
+  python manage.py load_initial_data   # types de sol uniquement
+  python manage.py import_fao_data --clear   # cultures + calendrier FAO RDC
+
+Modèles & migrations :
+- Culture, TypeSol, Exploitation, Analyse, FaoCalendrier créés
+- Migration 0001_initial appliquée sur MySQL (base agridec créée)
+- Commande load_initial_data : 8 cultures, 5 sols, 8 calendriers FAO
+- Exploitation.Statut : A_SEMER / DEJA_SEME
+
+Fondations & configuration :
+- requirements.txt créé (Django, mysqlclient, requests)
+- settings.py : ALLOWED_HOSTS, DEFAULT_AUTO_FIELD, STATICFILES_DIRS, auth redirects, WEATHER_SERVICE_CLASS
+- core/urls.py branché sur AgriDec/urls.py
+- core/services/ créé
+- templates/ et static/ à la racine du projet
+- Vue home placeholder + home.html
+- `python manage.py check` : OK
+
+Sujet : Première exploration du projet
+(état initial documenté ci-dessus)

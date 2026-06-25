@@ -1,0 +1,22 @@
+<header class="site-header">
+  <div class="container navbar">
+    <a href="{% url 'home' %}" class="navbar-brand">
+      <span class="navbar-brand-icon" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
+      </span>
+      AgriDec
+    </a>
+    <nav class="navbar-nav" aria-label="Navigation principale">
+      {% if user.is_authenticated %}
+        <a href="{% url 'dashboard' %}">Dashboard</a>
+        <a href="{% url 'logout' %}" class="btn btn-ghost btn-sm">Déconnexion</a>
+      {% else %}
+        <a href="{% url 'login' %}">Connexion</a>
+        <a href="{% url 'register' %}" class="btn btn-primary btn-sm">Inscription</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>

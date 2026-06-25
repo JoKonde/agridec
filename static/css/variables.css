@@ -1,0 +1,91 @@
+/* ============================================================
+   AgriDec — Variables CSS (design system)
+   ============================================================ */
+:root {
+  /* Couleurs principales — thème agricole moderne */
+  --color-primary: #2d6a4f;
+  --color-primary-light: #40916c;
+  --color-primary-dark: #1b4332;
+  --color-primary-50: #d8f3dc;
+
+  --color-secondary: #bc6c25;
+  --color-secondary-light: #dda15e;
+  --color-secondary-dark: #8b4513;
+
+  --color-accent: #52b788;
+
+  /* Surfaces & fond */
+  --color-bg: #f4f7f5;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-sidebar-bg: #1b4332;
+  --color-sidebar-text: #b7e4c7;
+  --color-sidebar-active: #2d6a4f;
+
+  /* Texte */
+  --color-text: #1b263b;
+  --color-text-inverse: #ffffff;
+  --color-muted: #6c757d;
+  --color-muted-light: #adb5bd;
+
+  /* Bordures & ombres */
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-sidebar: 2px 0 12px rgba(0, 0, 0, 0.15);
+
+  /* États */
+  --color-success: #2d6a4f;
+  --color-success-bg: #d8f3dc;
+  --color-error: #c1121f;
+  --color-error-bg: #fde8e8;
+  --color-warning: #bc6c25;
+  --color-warning-bg: #fff3e0;
+  --color-info: #0077b6;
+  --color-info-bg: #e0f4ff;
+
+  /* Typographie */
+  --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 2rem;
+  --font-size-4xl: 2.5rem;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.6;
+
+  /* Espacements */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  /* Rayons */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --topbar-height: 64px;
+  --container-max: 1200px;
+  --transition: 0.2s ease;
+  --transition-slow: 0.3s ease;
+}

@@ -1,0 +1,113 @@
+{% extends 'base_app.html' %}
+{% load static %}
+
+{% block title %}Analyse — {{ exploitation.culture.nom }} — AgriDec{% endblock %}
+{% block topbar_title %}Analyse agricole{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/analyse-page.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div class="analyse-header-meta">
+    <span class="badge">{{ exploitation.culture.nom }}</span>
+    <span class="badge badge-muted">{{ exploitation.type_sol.nom }}</span>
+    <span class="badge {% if exploitation.statut == 'DEJA_SEME' %}badge-success{% else %}badge-warning{% endif %}">
+      {{ exploitation.get_statut_display }}
+    </span>
+  </div>
+  <h1 class="page-title">Recommandations agricoles</h1>
+  <p class="page-subtitle">
+    {% if lecture_seule %}
+    Analyse du {{ analyse_date|date:"d/m/Y à H:i" }} — calendrier FAO (RDC) et météo enregistrés.
+    {% else %}
+    Basé sur le calendrier FAO (RDC) et la météo en temps réel à votre position GPS.
+    Source météo : {{ resultat.meta.source_meteo }}.
+    {% endif %}
+  </p>
+</header>
+
+<!-- Résumé général -->
+<div class="analyse-resume card">
+  <h2 class="analyse-card-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    </svg>
+    Résumé général
+  </h2>
+  <p>{{ resultat.resume }}</p>
+</div>
+
+<div class="analyse-grid">
+  <!-- Puis-je semer ? -->
+  <article class="analyse-card card {% if resultat.peut_semer.reponse %}analyse-card--yes{% else %}analyse-card--no{% endif %}">
+    <div class="analyse-card-header">
+      <h2 class="analyse-card-title">Puis-je semer ?</h2>
+      <span class="analyse-verdict {% if resultat.peut_semer.reponse %}verdict-yes{% else %}verdict-no{% endif %}">
+        {% if resultat.peut_semer.reponse %}Oui{% else %}Non{% endif %}
+      </span>
+    </div>
+    <p class="analyse-explication">{{ resultat.peut_semer.explication }}</p>
+  </article>
+
+  <!-- Meilleure période -->
+  <article class="analyse-card card">
+    <div class="analyse-card-header">
+      <h2 class="analyse-card-title">Meilleure période de semis</h2>
+    </div>
+    <p class="analyse-periodes"><strong>Calendrier FAO :</strong> {{ resultat.meilleure_periode_semis.periodes }}</p>
+    <p class="analyse-explication">{{ resultat.meilleure_periode_semis.explication }}</p>
+  </article>
+
+  <!-- Dois-je arroser ? -->
+  <article class="analyse-card card {% if resultat.arroser.reponse %}analyse-card--yes{% else %}analyse-card--no{% endif %}">
+    <div class="analyse-card-header">
+      <h2 class="analyse-card-title">Dois-je arroser ?</h2>
+      <span class="analyse-verdict {% if resultat.arroser.reponse %}verdict-yes{% else %}verdict-no{% endif %}">
+        {% if resultat.arroser.reponse %}Oui{% else %}Non{% endif %}
+      </span>
+    </div>
+    <p class="analyse-explication">{{ resultat.arroser.explication }}</p>
+  </article>
+
+  <!-- Quand récolter ? -->
+  <article class="analyse-card card">
+    <div class="analyse-card-header">
+      <h2 class="analyse-card-title">Quand récolter ?</h2>
+      {% if resultat.recolte.date_estimee_affichage %}
+      <span class="analyse-date">{{ resultat.recolte.date_estimee_affichage }}</span>
+      {% endif %}
+    </div>
+    <p class="analyse-explication">{{ resultat.recolte.explication }}</p>
+  </article>
+</div>
+
+<!-- Risques climatiques -->
+<section class="analyse-risques">
+  <h2 class="section-title">Risques climatiques (7 jours)</h2>
+  <div class="risques-list">
+    {% for risque in resultat.risques %}
+    <article class="risque-item risque-item--{{ risque.niveau }}">
+      <div class="risque-header">
+        <span class="risque-type">{{ risque.type }}</span>
+        <span class="risque-niveau badge {% if risque.niveau == 'élevé' %}badge-danger{% elif risque.niveau == 'modéré' %}badge-warning{% else %}badge-success{% endif %}">
+          {{ risque.niveau }}
+        </span>
+      </div>
+      <p>{{ risque.description }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="analyse-actions">
+  <a href="{% url 'analyses_list' %}" class="btn btn-ghost">Historique</a>
+  <a href="{% url 'dashboard' %}" class="btn btn-secondary">Dashboard</a>
+  {% if not lecture_seule %}
+  <a href="{% url 'exploitation_analyse' exploitation.pk %}" class="btn btn-primary">Actualiser l'analyse</a>
+  {% else %}
+  <a href="{% url 'exploitation_analyse' exploitation.pk %}" class="btn btn-primary">Nouvelle analyse</a>
+  {% endif %}
+</div>
+{% endblock %}

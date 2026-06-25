@@ -1,0 +1,74 @@
+{% extends 'base_app.html' %}
+
+{% block title %}Dashboard — AgriDec{% endblock %}
+{% block topbar_title %}Dashboard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1 class="page-title">Bienvenue, {{ user.username }} !</h1>
+  <p class="page-subtitle">Gérez vos cultures et consultez vos recommandations agricoles.</p>
+</header>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+        <circle cx="12" cy="12" r="4"/>
+      </svg>
+    </div>
+    <span class="stat-value">{{ exploitation_count }}</span>
+    <span class="stat-label">Culture{{ exploitation_count|pluralize:",s" }} enregistrée{{ exploitation_count|pluralize:",s" }}</span>
+  </div>
+</div>
+
+<div class="section-header">
+  <h2 class="section-title">Mes cultures</h2>
+  <a href="{% url 'exploitation_create' %}" class="btn btn-primary btn-icon">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Nouvelle culture
+  </a>
+</div>
+
+{% if exploitations %}
+<div class="table-wrapper">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Culture</th>
+        <th>Date</th>
+        <th>Statut</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for exp in exploitations %}
+      <tr>
+        <td><strong>{{ exp.culture.nom }}</strong></td>
+        <td>{{ exp.date_semis_effective|date:"d/m/Y"|default:"—" }}</td>
+        <td>
+          <span class="badge {% if exp.statut == 'DEJA_SEME' %}badge-success{% else %}badge-warning{% endif %}">
+            {{ exp.get_statut_display }}
+          </span>
+        </td>
+        <td>
+          <a href="{% url 'exploitation_analyse' exp.pk %}" class="btn btn-sm btn-secondary">Analyser</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+    <circle cx="12" cy="12" r="4"/>
+  </svg>
+  <p>Aucune culture enregistrée pour le moment.</p>
+  <a href="{% url 'exploitation_create' %}" class="btn btn-primary">+ Ajouter ma première culture</a>
+</div>
+{% endif %}
+{% endblock %}

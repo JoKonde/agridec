@@ -1,0 +1,180 @@
+/* ============================================================
+   AgriDec — Formulaire culture + géolocalisation
+   ============================================================ */
+
+.form-page-card {
+  max-width: 640px;
+}
+
+.exploitation-form .form-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-sm);
+}
+
+.form-select {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.15);
+}
+
+.form-date {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+/* Statut radio */
+.statut-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.statut-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 0.85rem 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.statut-option:hover {
+  border-color: var(--color-primary-light);
+  background: var(--color-primary-50);
+}
+
+.statut-option input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.statut-option:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-50);
+}
+
+.statut-option-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Bloc GPS */
+.gps-block {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.gps-block-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.gps-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.gps-hint {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  margin-top: var(--space-xs);
+}
+
+.gps-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.gps-status--loading {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.gps-status--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.gps-status--error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.gps-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+  display: none;
+}
+
+.gps-status--loading .gps-spinner {
+  display: block;
+}
+
+.gps-spinner[hidden] {
+  display: none !important;
+  animation: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.gps-coords {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+  font-family: monospace;
+}
+
+/* Actions formulaire */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.form-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}

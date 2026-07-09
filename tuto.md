@@ -562,4 +562,622 @@ Avec ce cours, même si tu “ne maîtrises pas encore Django”, tu peux expliq
 - les concepts de base
 - et **comment ils sont appliqués concrètement** dans AgriDec.
 
+================================================================
+PARTIE 2 — COMMENT AGRIDEC FONCTIONNE (MÉTIER + CODE)
+================================================================
+
+Cette partie répond à la question : **à quoi sert vraiment AgriDec ?**
+Et surtout : **comment FAO + GPS + météo + moteur de décision travaillent ensemble ?**
+
+----------------------------------------------------------------
+11. Vue d’ensemble : le problème qu’AgriDec résout
+----------------------------------------------------------------
+
+Un agriculteur en RDC se pose des questions simples mais importantes :
+
+1. **Puis-je semer maintenant ?**
+2. **Dois-je arroser aujourd’hui ?**
+3. **Quand est-ce que je récolte ?**
+4. **Y a-t-il des risques climatiques (pluie, chaleur, vent) ?**
+
+AgriDec ne devine pas avec de l’IA. Il combine **3 sources de données réelles** :
+
+| Source | Rôle | Quand ? |
+|--------|------|---------|
+| **FAO** (calendrier agricole) | Dit *en quels mois* on peut semer/récolter en RDC | Importé en base, consulté à l’analyse |
+| **GPS** (latitude/longitude) | Dit *où* est la parcelle de l’agriculteur | Au formulaire “Nouvelle culture” |
+| **Météo** (Open-Meteo) | Dit *quel temps* il fait et ce qui est prévu | À chaque analyse, en temps réel |
+
+Le **moteur de décision** (`decision_engine.py`) est le chef d’orchestre :
+il lit tout ça et produit des réponses en français compréhensibles.
+
+Schéma du flux global :
+
+```
+[Agriculteur]
+    │
+    ├─► Inscription / Connexion
+    │
+    ├─► Nouvelle culture (formulaire + GPS)
+    │       └─► Exploitation enregistrée en base (lat, lon, culture, sol, date)
+    │
+    └─► Bouton "Analyser"
+            │
+            ├─► Météo API (lat/lon) ──────────────┐
+            ├─► Calendrier FAO (base MySQL) ────┤
+            ├─► Données exploitation (base) ────┤
+            │                                    ▼
+            │                          DecisionEngine.analyze()
+            │                                    │
+            └─► Résultat JSON sauvegardé ◄───────┘
+                    │
+                    └─► Page analyse.html (recommandations)
+```
+
+----------------------------------------------------------------
+12. L’API FAO : à quoi elle sert et comment on l’utilise
+----------------------------------------------------------------
+
+### 12.1. C’est quoi l’API FAO ?
+
+La FAO (Organisation des Nations Unies pour l’alimentation) publie un **calendrier cultural**
+pour chaque pays : quelles cultures, dans quelles zones, à quels mois semer et récolter.
+
+- API officielle : https://api-cropcalendar.apps.fao.org/
+- Pour la RDC : code pays `CD`
+- Exemple d’URL : `/api/v1/countries/CD/cropCalendar`
+
+**Utilité pour AgriDec :**
+- savoir si **le mois actuel** est une bonne période de semis pour le maïs, le riz, etc.
+- connaître la **durée de croissance** (ex. 110 jours) pour estimer la date de récolte
+- afficher les **meilleures périodes** recommandées par zone (Sud-Ouest, Saison A…)
+
+### 12.2. Pourquoi on n’appelle pas l’API FAO à chaque analyse ?
+
+Parce que les calendriers FAO changent rarement. On fait donc :
+
+1. **Import une fois** (ou quand on veut mettre à jour) → commande `import_fao_data`
+2. **Stockage en base** → tables `Culture` et `FaoCalendrier`
+3. **Consultation rapide** à l’analyse → lecture MySQL, pas d’appel HTTP
+
+C’est plus rapide, plus fiable, et ça évite de dépendre de l’API FAO à chaque clic.
+
+### 12.3. Où trouver le code FAO ?
+
+| Fichier | Rôle |
+|---------|------|
+| `core/services/fao_service.py` | Client API + fonctions de consultation en base |
+| `core/management/commands/import_fao_data.py` | Commande d’import `python manage.py import_fao_data --clear` |
+| `core/models.py` → `Culture`, `FaoCalendrier` | Tables qui stockent les données importées |
+| `AgriDec/settings.py` | Config : `FAO_API_BASE_URL`, `FAO_COUNTRY_CODE='CD'`, `FAO_LANGUAGE='fr'` |
+
+### 12.4. Comment fonctionne l’import FAO (code expliqué)
+
+**Étape 1 — Appel API** (`fao_service.py`, classe `FaoService`) :
+
+```python
+service = FaoService(country_code='CD', language='fr')
+raw_entries = service.get_crop_calendar()
+```
+
+- `get_crop_calendar()` fait un GET HTTP vers l’API FAO
+- retourne du JSON brut (liste de cultures, zones, sessions de semis/récolte)
+
+**Étape 2 — Normalisation** (`normalize_calendar_entries()`) :
+
+L’API renvoie un format complexe. Cette fonction le transforme en dictionnaires simples :
+
+```python
+{
+    'fao_crop_id': '56',
+    'crop_name': 'Maïs',
+    'zone_aez': 'Sud Ouest',
+    'session_info': 'Saison A',
+    'mois_semis_debut': 9,
+    'mois_semis_fin': 11,
+    'mois_recolte_debut': 1,
+    'mois_recolte_fin': 3,
+    'growing_period_jours': 120,
+}
+```
+
+**Étape 3 — Sauvegarde en base** (`import_fao_data.py`) :
+
+- `Culture.objects.update_or_create(fao_crop_id=...)` → crée ou met à jour la culture
+- `FaoCalendrier.objects.update_or_create(...)` → crée ou met à jour le calendrier
+
+Commande à lancer :
+
+```bash
+python manage.py import_fao_data --clear
+```
+
+### 12.5. Comment le moteur lit le FAO à l’analyse ?
+
+Fonctions dans `fao_service.py` (consultation base, pas API) :
+
+| Fonction | Ce qu’elle fait |
+|----------|-----------------|
+| `get_calendriers_culture(culture)` | Tous les calendriers FAO d’une culture en RDC |
+| `est_dans_periode_semis(culture, mois)` | Le mois actuel est-il une période de semis ? |
+| `get_periodes_semis_texte(culture)` | Texte lisible : "septembre – novembre (Sud Ouest)" |
+| `mois_dans_periode(mois, debut, fin)` | Gère les périodes qui chevauchent l’année (ex. nov → fév) |
+
+Exemple d’utilisation dans `decision_engine.py` :
+
+```python
+mois_actuel = today.month  # ex. 9 = septembre
+dans_periode, cal_ref = est_dans_periode_semis(culture, mois_actuel)
+# dans_periode = True/False
+# cal_ref = l’objet FaoCalendrier correspondant (zone, session)
+```
+
+----------------------------------------------------------------
+13. La géolocalisation GPS : pourquoi et comment
+----------------------------------------------------------------
+
+### 13.1. Pourquoi le GPS est indispensable ?
+
+La météo **n’est pas la même partout**. Kinshasa ≠ Lubumbashi ≠ Goma.
+
+Sans GPS, AgriDec ne saurait pas quelle météo demander à Open-Meteo.
+Le GPS transforme la position de l’agriculteur en **coordonnées numériques** :
+
+- `latitude` : -4.325000 (ex. Kinshasa)
+- `longitude` : 15.322000
+
+Ces deux nombres sont ensuite utilisés pour l’appel météo.
+
+### 13.2. Où trouver le code GPS ?
+
+| Fichier | Rôle |
+|---------|------|
+| `static/js/geolocation.js` | Détecte la position via le navigateur (HTML5 Geolocation API) |
+| `templates/cultures/form.html` | Affiche le bloc GPS + champs cachés lat/lon |
+| `core/forms.py` → `ExploitationForm` | Valide que lat/lon sont présents et dans les bonnes bornes |
+| `core/models.py` → `Exploitation` | Stocke `latitude` et `longitude` en base (`DecimalField`) |
+
+### 13.3. Comment ça marche côté navigateur (geolocation.js)
+
+Quand l’agriculteur ouvre “Nouvelle culture”, le JavaScript s’exécute :
+
+```javascript
+navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+  enableHighAccuracy: true,
+  timeout: 15000,
+});
+```
+
+**Si succès** (`onSuccess`) :
+- récupère `position.coords.latitude` et `position.coords.longitude`
+- remplit les champs cachés `#id_latitude` et `#id_longitude`
+- active le bouton “Enregistrer”
+- affiche les coordonnées à l’écran
+
+**Si échec** (`onError`) :
+- message d’erreur (permission refusée, GPS désactivé, timeout)
+- bouton “Enregistrer” reste désactivé
+
+**Pourquoi des champs cachés ?**
+- L’utilisateur ne tape pas les coordonnées à la main
+- Le JS les remplit automatiquement
+- Django les reçoit comme des champs normaux du formulaire POST
+
+### 13.4. Validation côté serveur (forms.py)
+
+Le navigateur peut être contourné. Django vérifie donc côté serveur :
+
+```python
+def clean(self):
+    latitude = cleaned_data.get('latitude')
+    longitude = cleaned_data.get('longitude')
+    if latitude is None or longitude is None:
+        raise ValidationError('La localisation GPS est obligatoire.')
+    if not (-90 <= float(latitude) <= 90):
+        raise ValidationError({'latitude': 'Latitude invalide.'})
+    if not (-180 <= float(longitude) <= 180):
+        raise ValidationError({'longitude': 'Longitude invalide.'})
+```
+
+**Double sécurité** : JS côté client + validation Django côté serveur.
+
+----------------------------------------------------------------
+14. La météo Open-Meteo : à quoi elle sert
+----------------------------------------------------------------
+
+### 14.1. Pourquoi la météo ?
+
+Le calendrier FAO dit *“septembre–novembre c’est la saison de semis”*.
+Mais il ne dit pas s’il pleut **aujourd’hui** ou s’il fera 40°C demain.
+
+La météo apporte le **contexte immédiat** :
+- température actuelle et prévue
+- humidité de l’air
+- probabilité et quantité de pluie
+- vitesse du vent
+
+### 14.2. Où trouver le code météo ?
+
+| Fichier | Rôle |
+|---------|------|
+| `core/services/weather_service.py` | Client Open-Meteo + parsing de la réponse |
+| `AgriDec/settings.py` | Config : `WEATHER_API_BASE_URL`, `WEATHER_FORECAST_DAYS=7` |
+| `core/management/commands/test_weather.py` | Commande test : `python manage.py test_weather` |
+| `core/tests.py` | Tests d’intégration API réelle |
+
+### 14.3. Comment fonctionne l’appel météo (code expliqué)
+
+**Point d’entrée** — fonction `fetch_weather(latitude, longitude)` :
+
+```python
+def fetch_weather(latitude, longitude, days=None):
+    service = get_weather_service()  # lit settings.WEATHER_SERVICE_CLASS
+    return service.get_forecast(latitude, longitude, days=days)
+```
+
+**Appel HTTP** (`OpenMeteoWeatherService._fetch()`) :
+
+Construit une URL comme :
+```
+https://api.open-meteo.com/v1/forecast?latitude=-4.325&longitude=15.322
+  &daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,...
+  &forecast_days=7&timezone=Africa/Kinshasa
+```
+
+**Parsing** (`parse_open_meteo_response()`) :
+
+Transforme le JSON brut de l’API en structure AgriDec standardisée :
+
+```python
+{
+    'source': 'open-meteo',
+    'current': {
+        'temperature': 28.5,
+        'humidite': 72,
+        'probabilite_pluie': 45,
+        'pluie_mm': 2.1,
+        'vent_kmh': 12.0,
+    },
+    'forecast': [
+        {'date': '2026-07-09', 'temperature': 29.0, 'humidite': 68, ...},
+        {'date': '2026-07-10', 'temperature': 31.0, 'humidite': 55, ...},
+        # ... 7 jours
+    ],
+}
+```
+
+**Pourquoi cette structure standardisée ?**
+- Le moteur de décision ne connaît pas Open-Meteo directement
+- Il lit toujours `current` et `forecast` de la même façon
+- On pourrait changer d’API météo sans toucher au moteur (pattern interface)
+
+### 14.4. Quand la météo est-elle appelée ?
+
+**À chaque analyse**, pas à l’import ni à l’enregistrement de la culture.
+
+Dans `decision_engine.py`, ligne 43-46 :
+
+```python
+meteo = fetch_weather(
+    float(exploitation.latitude),
+    float(exploitation.longitude),
+)
+```
+
+Les coordonnées GPS stockées dans `Exploitation` sont donc **réutilisées** ici.
+
+----------------------------------------------------------------
+15. Le moteur de décision : le cœur d’AgriDec
+----------------------------------------------------------------
+
+### 15.1. Où le trouver ?
+
+| Fichier | Rôle |
+|---------|------|
+| `core/services/decision_engine.py` | Toute la logique de recommandation |
+| `core/views.py` → `exploitation_analyse_view` | Appelle le moteur et affiche le résultat |
+| `templates/cultures/analyse.html` | Affiche les recommandations à l’utilisateur |
+| `core/models.py` → `Analyse` | Sauvegarde le résultat JSON en historique |
+
+### 15.2. Comment il est déclenché ?
+
+1. L’agriculteur clique “Analyser” sur le dashboard
+2. URL : `/cultures/<pk>/analyser/`
+3. Vue `exploitation_analyse_view` dans `core/views.py` :
+
+```python
+exploitation = get_object_or_404(Exploitation, pk=pk, utilisateur=request.user)
+resultat = DecisionEngine().analyze(exploitation)
+Analyse.objects.create(exploitation=exploitation, resultat=resultat)
+return render(request, 'cultures/analyse.html', {
+    'exploitation': exploitation,
+    'resultat': resultat,
+})
+```
+
+### 15.3. La méthode principale : `analyze(exploitation)`
+
+Voici ce qu’elle fait, étape par étape :
+
+```
+analyze(exploitation)
+│
+├─ 1. fetch_weather(lat, lon)           → météo actuelle + 7 jours
+├─ 2. get_calendriers_culture(culture)   → calendrier FAO en base
+├─ 3. est_dans_periode_semis(culture, mois_actuel)  → bon mois FAO ?
+│
+├─ 4. _evaluer_semis()      → Puis-je semer ?
+├─ 5. _evaluer_arrosage()   → Dois-je arroser ?
+├─ 6. _evaluer_recolte()    → Quand récolter ?
+├─ 7. _evaluer_risques()    → Quels risques climatiques ?
+├─ 8. _generer_resume()     → Résumé en une phrase
+│
+└─ retourne un dict JSON structuré
+```
+
+### 15.4. Les règles métier (seuils)
+
+En haut de `decision_engine.py`, des constantes définissent les seuils :
+
+```python
+SEUIL_TEMP_SEMIS_MIN = 18      # °C minimum pour semer
+SEUIL_TEMP_SEMIS_MAX = 38      # °C maximum pour semer
+SEUIL_PLUIE_SEMIS_MM = 15      # mm de pluie = trop pour semer
+SEUIL_PROBA_PLUIE_SEMIS = 60   # % probabilité pluie = risque
+SEUIL_HUMIDITE_ARROSAGE = 55   # % humidité en dessous = arroser
+SEUIL_VENT_RISQUE = 35         # km/h = vent dangereux
+```
+
+Ce ne sont **pas** des valeurs magiques : ce sont des règles agronomiques simplifiées,
+choisies pour un projet académique. Un agronome pourrait les ajuster.
+
+### 15.5. Détail de chaque évaluation
+
+#### A) Puis-je semer ? — `_evaluer_semis()`
+
+**Conditions pour répondre OUI** (toutes doivent être vraies) :
+
+| Critère | Source | Règle |
+|---------|--------|-------|
+| Période FAO | FAO (base) | Le mois actuel est dans la fenêtre de semis |
+| Température | Météo (current) | Entre 18°C et 38°C |
+| Pluie proche | Météo (forecast 3j) | Pas de forte pluie prévue |
+| Sol | Exploitation | Sol sablonneux + humidité < 45% = trop sec |
+| Statut | Exploitation | Si déjà semé → toujours NON |
+
+**Exemple de réponse produite :**
+
+```python
+{
+    'reponse': True,
+    'explication': 'Nous sommes en période de semis FAO pour le Maïs (Sud Ouest, Saison A). '
+                   'La température actuelle (27°C) est favorable au semis. '
+                   'Les précipitations prévues sur les 3 prochains jours sont acceptables.'
+}
+```
+
+#### B) Dois-je arroser ? — `_evaluer_arrosage()`
+
+**Logique :**
+- Si statut = `A_SEMER` (pas encore semé) → NON, pas besoin d’arroser
+- Si statut = `DEJA_SEME` → on regarde :
+  - humidité < 55% ?
+  - peu de pluie prévue demain ?
+  - → si oui aux deux : OUI, arroser
+
+#### C) Quand récolter ? — `_evaluer_recolte()`
+
+**Formule simple :**
+
+```
+date_recolte = date_semis + durée_croissance_jours
+```
+
+- `date_semis` = date réelle ou prévue selon le statut
+- `durée_croissance` = `culture.duree_recolte_jours` ou `FaoCalendrier.growing_period_jours`
+
+Exemple : semis le 01/09/2026 + 120 jours FAO → récolte estimée le 30/12/2026
+
+#### D) Risques climatiques — `_evaluer_risques()`
+
+Parcourt les 7 jours de prévision et détecte :
+
+| Type de risque | Condition |
+|----------------|-----------|
+| Fortes pluies | pluie > 25 mm ou probabilité > 80% |
+| Chaleur excessive | température > 38°C |
+| Froid | température min < 10°C |
+| Vent fort | vent > 35 km/h |
+| Sécheresse | humidité < 40% et pluie < 1 mm |
+
+Retourne une liste de risques avec niveau (faible / modéré / élevé) et description.
+
+### 15.6. Structure du résultat final
+
+```python
+{
+    'peut_semer': {'reponse': True/False, 'explication': '...'},
+    'meilleure_periode_semis': {
+        'periodes': 'septembre – novembre (Sud Ouest) ; ...',
+        'explication': 'Selon le calendrier FAO...'
+    },
+    'arroser': {'reponse': True/False, 'explication': '...'},
+    'recolte': {
+        'date_estimee': '2026-12-30',
+        'date_estimee_affichage': '30/12/2026',
+        'explication': '...'
+    },
+    'risques': [
+        {'type': 'Fortes pluies', 'niveau': 'élevé', 'description': '...'},
+        ...
+    ],
+    'resume': 'Analyse pour votre Maïs (sol Limoneux). Les conditions semblent favorables...',
+    'meta': {
+        'culture': 'Maïs',
+        'type_sol': 'Limoneux',
+        'source_meteo': 'open-meteo',
+        'date_analyse': '2026-07-09'
+    }
+}
+```
+
+Ce dict est :
+1. **affiché** dans `templates/cultures/analyse.html`
+2. **sauvegardé** dans `Analyse.resultat` (JSONField) pour l’historique
+
+----------------------------------------------------------------
+16. Comment tout se marie : le scénario complet
+----------------------------------------------------------------
+
+Prenons un agriculteur à Kinshasa qui veut planter du maïs.
+
+### Étape 1 — Préparation (admin / une fois)
+
+```bash
+python manage.py import_fao_data --clear
+```
+
+→ 29 cultures + 173 calendriers FAO pour la RDC en base MySQL.
+
+### Étape 2 — L’agriculteur s’inscrit
+
+- Vue : `register_view` → crée un `User` Django
+- Rien à voir avec FAO/météo pour l’instant.
+
+### Étape 3 — Nouvelle culture
+
+L’agriculteur remplit le formulaire :
+
+| Champ | Valeur | Source |
+|-------|--------|--------|
+| Culture | Maïs | Liste `Culture` (importée FAO) |
+| Type de sol | Limoneux | Liste `TypeSol` (load_initial_data) |
+| Statut | Je vais semer | Choix utilisateur |
+| Date | 15/09/2026 | Saisie utilisateur |
+| Latitude | -4.325000 | **GPS automatique** (geolocation.js) |
+| Longitude | 15.322000 | **GPS automatique** (geolocation.js) |
+
+→ `Exploitation` créée en base avec toutes ces infos.
+
+### Étape 4 — Analyse
+
+L’agriculteur clique “Analyser”. Le moteur fait :
+
+```
+1. fetch_weather(-4.325, 15.322)
+   → Open-Meteo renvoie : 27°C, humidité 72%, pluie 2mm demain...
+
+2. est_dans_periode_semis(Maïs, septembre=9)
+   → FAO dit : OUI, septembre est dans la fenêtre Sud Ouest Saison A
+
+3. _evaluer_semis()
+   → FAO OK + température OK + pas de forte pluie = OUI, vous pouvez semer
+
+4. _evaluer_arrosage()
+   → Statut = A_SEMER → NON, pas encore semé
+
+5. _evaluer_recolte()
+   → 15/09/2026 + 120 jours = récolte vers 13/01/2027
+
+6. _evaluer_risques()
+   → Pas de risque majeur sur les 7 prochains jours
+
+7. Résultat affiché + sauvegardé dans Analyse
+```
+
+### Étape 5 — Historique
+
+L’agriculteur peut revoir cette analyse plus tard via `/analyses/`
+sans refaire d’appel API (données déjà en JSON dans `Analyse.resultat`).
+
+----------------------------------------------------------------
+17. Carte complète du code : où trouver quoi ?
+----------------------------------------------------------------
+
+### Par fonctionnalité
+
+| Fonctionnalité | Fichiers principaux |
+|----------------|---------------------|
+| **Inscription / Connexion** | `core/forms.py` (RegisterForm, LoginForm), `core/views.py`, `templates/auth/` |
+| **Dashboard** | `core/views.py` → `dashboard_view`, `templates/dashboard.html` |
+| **GPS / Géolocalisation** | `static/js/geolocation.js`, `templates/cultures/form.html`, `core/forms.py` (validation) |
+| **Formulaire culture** | `core/forms.py` → `ExploitationForm`, `templates/cultures/form.html` |
+| **Import FAO** | `core/services/fao_service.py`, `core/management/commands/import_fao_data.py` |
+| **Consultation FAO** | `core/services/fao_service.py` (get_calendriers, est_dans_periode_semis…) |
+| **API Météo** | `core/services/weather_service.py` |
+| **Moteur de décision** | `core/services/decision_engine.py` |
+| **Page d’analyse** | `core/views.py` → `exploitation_analyse_view`, `templates/cultures/analyse.html` |
+| **Historique analyses** | `core/views.py` → `analyses_list_view`, `analyse_detail_view`, `templates/analyses/` |
+| **Modèles / Base de données** | `core/models.py`, `core/migrations/` |
+| **Configuration APIs** | `AgriDec/settings.py` (lignes FAO_* et WEATHER_*) |
+| **Routes URL** | `core/urls.py`, `AgriDec/urls.py` |
+| **CSS / JS** | `static/css/`, `static/js/` |
+| **Tests** | `core/tests.py` |
+| **Commandes management** | `core/management/commands/` |
+
+### Par couche technique
+
+```
+COUCHE PRÉSENTATION (ce que voit l'utilisateur)
+├── templates/                    → HTML Django
+├── static/css/                   → Styles
+└── static/js/                    → JavaScript (GPS, menu mobile)
+
+COUCHE CONTRÔLEUR (orchestration)
+├── core/views.py                 → Vues Django
+├── core/forms.py                 → Formulaires
+└── core/urls.py                  → Routage
+
+COUCHE MÉTIER (logique agricole)
+├── core/services/decision_engine.py  → Moteur de décision
+├── core/services/fao_service.py      → FAO (API + consultation)
+└── core/services/weather_service.py  → Météo Open-Meteo
+
+COUCHE DONNÉES (persistance)
+├── core/models.py                → Modèles Django / tables MySQL
+└── core/migrations/              → Évolution du schéma
+
+COUCHE CONFIGURATION
+├── AgriDec/settings.py           → Config globale
+├── AgriDec/urls.py               → URLs racine
+└── .env                          → Secrets (non commité)
+
+COUCHE OUTILS
+└── core/management/commands/     → import_fao_data, load_initial_data, test_weather
+```
+
+----------------------------------------------------------------
+18. Ce qu’il faut retenir pour expliquer à un étudiant
+----------------------------------------------------------------
+
+**En une phrase :**
+> AgriDec aide un agriculteur congolais à décider quand semer, arroser et récolter,
+> en croisant le calendrier officiel FAO, la météo réelle à sa position GPS,
+> et des règles métier simples et transparentes.
+
+**Les 4 piliers à retenir :**
+
+1. **FAO** = le “quand” agronomique (mois de semis/récolte) → importé en base
+2. **GPS** = le “où” (coordonnées de la parcelle) → détecté par le navigateur
+3. **Météo** = le “maintenant” (température, pluie, vent) → API temps réel
+4. **Moteur** = le “donc” (recommandation finale) → règles Python explicites
+
+**Ce qu’AgriDec n’est PAS :**
+- Pas d’intelligence artificielle / machine learning
+- Pas de données fictives ou simulées
+- Pas un substitut à un agronome sur le terrain
+- Pas un produit commercial (projet académique)
+
+**Plan de démo pour un étudiant (15 minutes) :**
+
+1. Montrer la page d’accueil → expliquer le but
+2. S’inscrire → montrer que c’est du Django classique (form + view)
+3. Créer une culture → montrer le GPS en action (autoriser la localisation)
+4. Lancer une analyse → expliquer que 3 sources de données sont croisées
+5. Lire les recommandations → montrer le template analyse.html
+6. Ouvrir le code : decision_engine.py → montrer les règles simples
+7. Montrer l’historique → expliquer la sauvegarde JSON
+
+Avec ce cours complet (Partie 1 Django + Partie 2 Métier), tu as tout ce qu’il faut
+pour comprendre et expliquer AgriDec de A à Z.
 

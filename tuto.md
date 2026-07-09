@@ -453,12 +453,631 @@ Spécial pour la partie “application” (quand l’utilisateur est connecté) 
   - affiche les champs du formulaire un par un (`{{ form.culture }}`, `{{ form.type_sol }}`, etc.).
   - utilise `{{ form.non_field_errors }}` et `form.<champ>.errors` pour les messages d’erreur.
 
-7.4. Syntaxe de base du langage de template
--------------------------------------------
+7.4. Syntaxe de base : deux familles de balises
+-----------------------------------------------
 
-- `{{ variable }}` → affiche une variable.
-- `{% tag ... %}` → balise de contrôle (extends, if, for, url, include, etc.).
-- `{% url 'nom_de_route' arg %}` → génère une URL à partir du nom de route.
+Dans un fichier `.html` Django, tu mélanges du **HTML classique** et du **langage de template Django**.
+
+Il y a **2 types** de balises Django :
+
+| Syntaxe | Nom | Rôle | Exemple AgriDec |
+|---------|-----|------|-----------------|
+| `{{ ... }}` | **Variable** | Afficher une valeur | `{{ user.username }}` |
+| `{% ... %}` | **Tag** | Action / logique | `{% if exploitations %}`, `{% for exp in exploitations %}` |
+
+**Règle importante :**
+- `{{ }}` → **affiche** quelque chose dans la page
+- `{% %}` → **fait** quelque chose (boucle, condition, inclusion, héritage…) mais n’affiche rien directement (sauf certains tags)
+
+Le reste du fichier (`<div>`, `<p>`, `<a>`…) est du **HTML normal** envoyé tel quel au navigateur.
+
+----------------------------------------------------------------
+7.5. {% extends %} — hériter d’un template parent
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+`{% extends 'nom_du_template.html' %}` dit à Django :
+
+> « Ne construis pas une page complète. Prends d’abord le squelette d’un autre template, puis remplace seulement les blocs que je redéfinis. »
+
+### Exemple dans AgriDec — `home.html`
+
+```django
+{% extends 'base_public.html' %}
+
+{% block title %}Accueil — AgriDec{% endblock %}
+
+{% block content %}
+<section class="hero">
+  ...
+  <a href="{% url 'register' %}" class="btn btn-primary btn-lg">Créer un compte gratuit</a>
+</section>
+{% endblock %}
+```
+
+**Ligne par ligne :**
+
+1. `{% extends 'base_public.html' %}`  
+   → `home.html` **n’est pas** une page HTML complète. Elle s’appuie sur `base_public.html`.
+
+2. `{% block title %}...{% endblock %}`  
+   → remplace le `<title>` de la page (défini dans `base.html`).
+
+3. `{% block content %}...{% endblock %}`  
+   → remplace la zone centrale (hero, texte, boutons).
+
+4. `<a href="{% url 'register' %}">`  
+   → lien vers l’URL nommée `register` (= `/inscription/` dans `core/urls.py`).
+
+### Chaîne d’héritage dans AgriDec (3 niveaux)
+
+AgriDec utilise une **cascade** de templates :
+
+```
+base.html                    ← squelette HTML minimal (DOCTYPE, head, body)
+    │
+    ├── base_public.html     ← pages publiques (navbar, footer)
+    │       └── home.html
+    │       └── auth/login.html
+    │       └── auth/register.html
+    │
+    └── base_app.html        ← pages connectées (sidebar, topbar)
+            └── dashboard.html
+            └── cultures/form.html
+            └── cultures/analyse.html
+            └── analyses/list.html
+```
+
+**Concrètement, quand tu ouvres la page d’accueil :**
+
+```
+home.html
+  → étend base_public.html
+      → étend base.html
+          → produit le HTML final envoyé au navigateur
+```
+
+### Règles à retenir pour `extends`
+
+- `{% extends %}` doit être **la toute première ligne** du fichier (ou après un commentaire).
+- Un template enfant **ne redéfinit que les blocs** qu’il veut changer.
+- Les blocs non redéfinis gardent la valeur du parent (ou restent vides).
+
+----------------------------------------------------------------
+7.6. {% block %} — les zones remplaçables
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+Un `{% block nom %}` est une **zone vide** dans le parent, que l’enfant peut remplir.
+
+### Dans `base.html` (le plus haut niveau)
+
+```django
+<title>{% block title %}AgriDec{% endblock %}</title>
+...
+{% block extra_css %}{% endblock %}
+...
+{% block body %}{% endblock %}
+{% block extra_js %}{% endblock %}
+```
+
+| Bloc | Rôle dans AgriDec |
+|------|-------------------|
+| `title` | Titre de l’onglet navigateur |
+| `extra_css` | CSS supplémentaire par page (ex. `form-page.css`) |
+| `body` | Tout le contenu visible de la page |
+| `extra_js` | JavaScript supplémentaire (ex. `geolocation.js`) |
+
+### Dans `base_app.html` (pages connectées)
+
+```django
+{% extends 'base.html' %}
+
+{% block body %}
+<div class="app-layout">
+  {% include 'partials/sidebar.html' %}
+  ...
+  <span class="app-topbar-title">{% block topbar_title %}Dashboard{% endblock %}</span>
+  ...
+  {% block content %}{% endblock %}
+</div>
+{% endblock %}
+```
+
+Ici `base_app.html` :
+- remplit le bloc `body` de `base.html`
+- crée **de nouveaux blocs** (`topbar_title`, `content`) pour ses enfants
+
+### Dans `dashboard.html` (page finale)
+
+```django
+{% extends 'base_app.html' %}
+
+{% block title %}Dashboard — AgriDec{% endblock %}
+{% block topbar_title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1>Bienvenue, {{ user.username }} !</h1>
+...
+{% endblock %}
+```
+
+`dashboard.html` remplit **3 blocs** sans réécrire la sidebar, le footer, les CSS globaux.
+
+### Analogie pour l’étudiant
+
+> Un `block`, c’est comme un **trou dans un moule**. Le parent fournit le moule, l’enfant verse son contenu dans les trous prévus.
+
+----------------------------------------------------------------
+7.7. {% include %} — insérer un morceau de template
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+`{% include 'chemin/vers/fichier.html' %}` **copie** le contenu d’un autre template à cet endroit.
+
+Contrairement à `extends` (héritage vertical), `include` c’est une **insertion** horizontale.
+
+### Exemples AgriDec
+
+**Dans `base_app.html` :**
+```django
+{% include 'partials/sidebar.html' %}
+{% include 'partials/messages.html' %}
+```
+
+**Dans `base_public.html` :**
+```django
+{% include 'partials/navbar.html' %}
+{% include 'partials/messages.html' %}
+```
+
+### Pourquoi utiliser `include` ?
+
+- **Réutiliser** le même HTML (sidebar, navbar, messages) sur plusieurs pages
+- **Ne pas dupliquer** le code
+- **Modifier un seul fichier** (`sidebar.html`) pour changer le menu partout
+
+### `extends` vs `include` — la différence
+
+| | `{% extends %}` | `{% include %}` |
+|--|----------------|-----------------|
+| Relation | Parent → enfant (héritage) | Morceau inséré tel quel |
+| Qui remplace quoi | L’enfant remplace des `block` | Aucun bloc, tout est copié |
+| Exemple AgriDec | `home.html` étend `base_public.html` | `base_app.html` inclut `sidebar.html` |
+
+----------------------------------------------------------------
+7.8. {% load static %} et {% static %} — fichiers CSS/JS/images
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+Django stocke les fichiers statiques dans `static/` (CSS, JS, images).
+Pour les utiliser dans un template :
+
+```django
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/base.css' %}">
+<script src="{% static 'js/main.js' %}"></script>
+```
+
+### Exemples AgriDec
+
+**Dans `base.html` :**
+```django
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/variables.css' %}">
+<link rel="stylesheet" href="{% static 'css/base.css' %}">
+```
+
+**Dans `cultures/form.html` (CSS spécifique à la page) :**
+```django
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/form-page.css' %}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/geolocation.js' %}"></script>
+{% endblock %}
+```
+
+### Syntaxe
+
+- `{% load static %}` → **obligatoire une fois** en haut du template (ou du parent)
+- `{% static 'chemin/relatif/depuis/static/' %}` → génère l’URL finale du fichier
+
+Django transforme `{% static 'css/base.css' %}` en quelque chose comme `/static/css/base.css`.
+
+----------------------------------------------------------------
+7.9. {% url %} — générer un lien vers une route Django
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+Au lieu d’écrire l’URL en dur (`/inscription/`), on utilise le **nom** défini dans `urls.py` :
+
+```django
+<a href="{% url 'register' %}">Créer un compte</a>
+```
+
+Django cherche dans `core/urls.py` :
+```python
+path('inscription/', views.register_view, name='register'),
+```
+
+Et génère : `/inscription/`
+
+### Exemples AgriDec
+
+| Dans le template | Nom de route | URL générée |
+|------------------|--------------|-------------|
+| `{% url 'home' %}` | `home` | `/` |
+| `{% url 'register' %}` | `register` | `/inscription/` |
+| `{% url 'login' %}` | `login` | `/connexion/` |
+| `{% url 'dashboard' %}` | `dashboard` | `/dashboard/` |
+| `{% url 'exploitation_create' %}` | `exploitation_create` | `/cultures/nouvelle/` |
+| `{% url 'logout' %}` | `logout` | `/deconnexion/` |
+
+### Avec un paramètre (ID dans l’URL)
+
+Quand l’URL contient un ID :
+
+```python
+# urls.py
+path('cultures/<int:pk>/analyser/', views.exploitation_analyse_view, name='exploitation_analyse'),
+```
+
+Dans le template :
+```django
+<a href="{% url 'exploitation_analyse' exp.pk %}">Analyser</a>
+```
+
+- `exp.pk` = l’identifiant de l’exploitation (ex. 5)
+- Résultat : `/cultures/5/analyser/`
+
+Autre exemple :
+```django
+{% url 'analyse_detail' pk=analyse.pk %}
+```
+
+### Pourquoi ne pas écrire l’URL en dur ?
+
+Si tu changes `/inscription/` en `/creer-compte/` dans `urls.py`, **tous** les `{% url 'register' %}` se mettent à jour automatiquement. Pas besoin de chercher dans tous les HTML.
+
+----------------------------------------------------------------
+7.10. {{ variable }} — afficher des données
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+`{{ nom_variable }}` affiche la valeur envoyée par la **vue** (ou par un context processor).
+
+### D’où viennent les variables ?
+
+**1. Envoyées par la vue** (`context` dans `render()`) :
+
+```python
+# views.py
+return render(request, 'dashboard.html', {
+    'exploitation_count': exploitations.count(),
+    'exploitations': exploitations,
+})
+```
+
+```django
+<!-- dashboard.html -->
+<span class="stat-value">{{ exploitation_count }}</span>
+```
+
+**2. Automatiques via context processors** (`settings.py`) :
+
+| Variable | Disponible partout grâce à | Exemple |
+|----------|---------------------------|---------|
+| `user` | `auth.context_processors.auth` | `{{ user.username }}` |
+| `messages` | `messages.context_processors.messages` | boucle sur les alertes |
+| `request` | `request.context_processors.request` | `{{ request.resolver_match.url_name }}` |
+
+### Accéder aux propriétés d’un objet
+
+```django
+{{ user.username }}              → nom de l'utilisateur connecté
+{{ exp.culture.nom }}            → nom de la culture (via relation ForeignKey)
+{{ exp.get_statut_display }}     → texte lisible du statut ("Je vais semer")
+{{ resultat.resume }}            → résumé de l'analyse (dict JSON)
+{{ form.culture.label }}         → label du champ formulaire
+```
+
+### Accéder aux champs de formulaire
+
+```django
+{{ form.culture }}               → rend le <select> HTML du champ
+{{ form.latitude }}              → rend l'<input> caché latitude
+{% for error in form.culture.errors %}
+  <li>{{ error }}</li>
+{% endfor %}
+```
+
+----------------------------------------------------------------
+7.11. {% if %} / {% else %} / {% endif %} — conditions
+----------------------------------------------------------------
+
+### Syntaxe
+
+```django
+{% if condition %}
+  ... affiché si vrai ...
+{% else %}
+  ... affiché si faux ...
+{% endif %}
+```
+
+### Exemple 1 — `dashboard.html` (liste vide ou pas)
+
+```django
+{% if exploitations %}
+  <table>...</table>
+{% else %}
+  <p>Aucune culture enregistrée pour le moment.</p>
+{% endif %}
+```
+
+- Si la vue envoie une liste non vide → tableau affiché
+- Si liste vide → message “Aucune culture”
+
+### Exemple 2 — classe CSS dynamique
+
+```django
+<span class="badge {% if exp.statut == 'DEJA_SEME' %}badge-success{% else %}badge-warning{% endif %}">
+  {{ exp.get_statut_display }}
+</span>
+```
+
+- Statut `DEJA_SEME` → badge vert (`badge-success`)
+- Sinon → badge orange (`badge-warning`)
+
+### Exemple 3 — `partials/messages.html`
+
+```django
+{% if messages %}
+<div class="messages">
+  {% for message in messages %}
+  <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+```
+
+- Affiche les messages flash seulement s’il y en a (succès connexion, erreur formulaire…)
+
+### Exemple 4 — lien actif dans la sidebar
+
+```django
+<a href="{% url 'dashboard' %}"
+   class="sidebar-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+  Dashboard
+</a>
+```
+
+- Si on est sur la page dashboard → classe `active` ajoutée (menu surligné)
+
+----------------------------------------------------------------
+7.12. {% for %} / {% endfor %} — boucles
+----------------------------------------------------------------
+
+### Syntaxe
+
+```django
+{% for element in liste %}
+  {{ element }}
+{% endfor %}
+```
+
+### Exemple 1 — liste des exploitations (`dashboard.html`)
+
+```django
+{% for exp in exploitations %}
+<tr>
+  <td><strong>{{ exp.culture.nom }}</strong></td>
+  <td>{{ exp.date_semis_effective|date:"d/m/Y"|default:"—" }}</td>
+  <td>{{ exp.get_statut_display }}</td>
+  <td>
+    <a href="{% url 'exploitation_analyse' exp.pk %}">Analyser</a>
+  </td>
+</tr>
+{% endfor %}
+```
+
+Pour **chaque** exploitation dans la liste, Django génère une ligne de tableau.
+
+### Exemple 2 — erreurs de formulaire (`cultures/form.html`)
+
+```django
+{% for error in form.non_field_errors %}
+<p>{{ error }}</p>
+{% endfor %}
+```
+
+### Exemple 3 — boutons radio du statut
+
+```django
+{% for radio in form.statut %}
+<label class="statut-option">
+  {{ radio.tag }}
+  <span>{{ radio.choice_label }}</span>
+</label>
+{% endfor %}
+```
+
+----------------------------------------------------------------
+7.13. Les filtres — transformer l’affichage avec |
+----------------------------------------------------------------
+
+### C’est quoi ?
+
+Un **filtre** modifie la valeur avant affichage :
+
+```django
+{{ variable|filtre:"argument" }}
+```
+
+### Filtres utilisés dans AgriDec
+
+| Filtre | Exemple | Résultat |
+|--------|---------|----------|
+| `date` | `{{ exp.date_semis_effective\|date:"d/m/Y" }}` | `15/07/2026` |
+| `default` | `{{ valeur\|default:"—" }}` | `—` si valeur vide |
+| `pluralize` | `Culture{{ count\|pluralize:",s" }}` | `Culture` ou `Cultures` |
+| `first` | `{{ user.username\|first\|upper }}` | première lettre en majuscule (avatar) |
+| `upper` | `{{ user.username\|first\|upper }}` | majuscule |
+
+### Exemple `pluralize` dans `dashboard.html`
+
+```django
+Culture{{ exploitation_count|pluralize:",s" }} enregistrée{{ exploitation_count|pluralize:",s" }}
+```
+
+- Si `exploitation_count = 1` → “Culture enregistrée”
+- Si `exploitation_count = 3` → “Cultures enregistrées”
+
+### Chaîner plusieurs filtres
+
+```django
+{{ exp.date_semis_effective|date:"d/m/Y"|default:"—" }}
+```
+
+1. Formate la date en `jj/mm/aaaa`
+2. Si pas de date → affiche `—`
+
+----------------------------------------------------------------
+7.14. Autres tags importants dans AgriDec
+----------------------------------------------------------------
+
+### {% csrf_token %} — protection des formulaires
+
+Dans tout formulaire POST :
+
+```django
+<form method="post">
+  {% csrf_token %}
+  ...
+</form>
+```
+
+- Génère un champ caché avec un jeton de sécurité
+- Django **rejette** les POST sans ce jeton (protection anti-hacking)
+- Obligatoire sur `cultures/form.html`, `login.html`, `register.html`
+
+### {% now %} — date/heure actuelle
+
+```django
+<p>AgriDec &copy; {% now "Y" %}</p>
+```
+
+- Affiche l’année en cours (ex. `2026`)
+- Utile dans les footers
+
+### Commentaires
+
+```django
+{# Ceci n'apparaît pas dans le HTML final #}
+```
+
+----------------------------------------------------------------
+7.15. Où commence et où finit le HTML Django ?
+----------------------------------------------------------------
+
+Question fréquente : **« Dans une page Django, qu’est-ce qui est Django et qu’est-ce qui est HTML ? »**
+
+### Réponse avec `home.html`
+
+```django
+{% extends 'base_public.html' %}          ← DJANGO (héritage)
+
+{% block title %}Accueil — AgriDec{% endblock %}   ← DJANGO (bloc)
+
+{% block content %}                       ← DJANGO (début de bloc)
+<section class="hero">                    ← HTML
+  <h1>Prenez de meilleures décisions</h1> ← HTML
+  <a href="{% url 'register' %}">         ← DJANGO dans un attribut HTML
+    Créer un compte                       ← HTML (texte du lien)
+  </a>
+</section>                                ← HTML
+{% endblock %}                            ← DJANGO (fin de bloc)
+```
+
+### Ce que le navigateur reçoit
+
+Le navigateur **ne voit jamais** les balises `{% %}` ou `{{ }}`.
+Django les **traite côté serveur** et envoie du **HTML pur** :
+
+```html
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <title>Accueil — AgriDec</title>
+  <link rel="stylesheet" href="/static/css/base.css">
+</head>
+<body>
+  ...
+  <a href="/inscription/" class="btn btn-primary">Créer un compte</a>
+  ...
+</body>
+</html>
+```
+
+### Schéma du traitement
+
+```
+1. Vue appelle : render(request, 'home.html', context)
+2. Django charge home.html
+3. Django voit {% extends %} → charge base_public.html
+4. base_public.html étend base.html → charge base.html
+5. Django remplace tous les {% block %} par le contenu des enfants
+6. Django remplace {{ }} et {% url %} par les vraies valeurs
+7. Django envoie le HTML final au navigateur
+```
+
+### Les 3 fichiers impliqués pour la page d’accueil
+
+| Fichier | Rôle | Contient |
+|---------|------|----------|
+| `base.html` | Squelette HTML | `<html>`, `<head>`, CSS globaux, `{% block body %}` |
+| `base_public.html` | Layout public | Navbar, footer, `{% block content %}` |
+| `home.html` | Contenu spécifique | Hero, features, boutons inscription |
+
+### Les 3 fichiers impliqués pour le dashboard
+
+| Fichier | Rôle |
+|---------|------|
+| `base.html` | Squelette HTML |
+| `base_app.html` | Layout app (sidebar, topbar) |
+| `dashboard.html` | Contenu dashboard (stats, tableau cultures) |
+
+----------------------------------------------------------------
+7.16. Récapitulatif — toutes les balises Django d’AgriDec
+----------------------------------------------------------------
+
+| Balise | Fichier exemple | À retenir |
+|--------|-----------------|-----------|
+| `{% extends '...' %}` | `home.html`, `dashboard.html` | Hériter d’un parent |
+| `{% block nom %}...{% endblock %}` | tous les templates enfants | Zone remplaçable |
+| `{% include '...' %}` | `base_app.html` → sidebar | Insérer un morceau |
+| `{% load static %}` | `base.html`, `form.html` | Activer les fichiers statiques |
+| `{% static 'css/...' %}` | `base.html` | URL d’un CSS/JS |
+| `{% url 'nom_route' %}` | `home.html`, `sidebar.html` | URL depuis urls.py |
+| `{% url 'route' obj.pk %}` | `dashboard.html` | URL avec paramètre |
+| `{{ variable }}` | `dashboard.html` | Afficher une valeur |
+| `{{ var\|filtre }}` | `dashboard.html` | Transformer l’affichage |
+| `{% if %}...{% endif %}` | `dashboard.html`, `messages.html` | Condition |
+| `{% for %}...{% endfor %}` | `dashboard.html`, `form.html` | Boucle |
+| `{% csrf_token %}` | `form.html`, `login.html` | Sécurité formulaire POST |
+| `{% now "Y" %}` | `base_public.html` | Année actuelle |
+
+### Phrase à dire à l’étudiant
+
+> *« Un template Django, c’est du HTML avec des balises spéciales. Django lit le template côté serveur, remplace les variables et les blocs, puis envoie du HTML normal au navigateur. Dans AgriDec, on utilise l’héritage (`extends`) pour ne pas répéter la navbar et la sidebar, et les blocs (`block`) pour que chaque page n’écrive que son contenu unique. »*
 
 ----------------------------------------------------------------
 8. Services : fao_service, weather_service, decision_engine

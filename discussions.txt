@@ -31,6 +31,7 @@ Finitions finales :
 - Validation : `python manage.py check` OK, `python manage.py test core` OK (3 tests)
 - README.md réécrit pour GitHub (JoKonde/agirdec) — installation complète, contexte académique
 - tuto.md : Partie 2 ajoutée — fonctionnement métier (FAO, GPS, météo, moteur de décision) + carte du code
+- tuto.md : section 7 enrichie — syntaxe complète templates Django (extends, block, include, url, static, if, for, filtres)
 
 Moteur de décision + page analyse :
 - decision_engine.py : règles métier FAO + météo réelle

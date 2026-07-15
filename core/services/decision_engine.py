@@ -1,10 +1,11 @@
 """
 Moteur de décision agricole AgriDec.
-Combine calendrier FAO (base), météo (API) et règles métier.
-Aucun machine learning — uniquement des règles explicites.
+Combine calendrier FAO (base), météo (API), règles métier,
+et un modèle ML entraîné sur One Acre Fund + LSMS-ISA (si disponible).
 """
 from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone
 
 from core.models import Exploitation
@@ -14,10 +15,11 @@ from core.services.fao_service import (
     get_calendriers_culture,
     get_periodes_semis_texte,
 )
+from core.services.ml_predictor import model_available, predict_decisions
 from core.services.weather_service import fetch_weather
 
 
-# Seuils météorologiques (règles métier)
+# Seuils météorologiques (règles métier — secours si ML indisponible)
 SEUIL_TEMP_SEMIS_MIN = 18
 SEUIL_TEMP_SEMIS_MAX = 38
 SEUIL_PLUIE_SEMIS_MM = 15
@@ -59,12 +61,28 @@ class DecisionEngine:
         current = meteo['current']
         forecast = meteo['forecast']
 
+        # Prédiction ML (One Acre Fund + LSMS) — None si modèle absent
+        ml_pred = None
+        if getattr(settings, 'USE_ML_MODEL', True) and model_available():
+            ml_pred = predict_decisions(
+                culture=culture.nom,
+                type_sol=exploitation.type_sol.nom,
+                mois=mois_actuel,
+                latitude=float(exploitation.latitude),
+                longitude=float(exploitation.longitude),
+                temperature=float(current['temperature']),
+                pluie_mm=float(current['pluie_mm']),
+                humidite=float(current['humidite']),
+                vent_kmh=float(current['vent_kmh']),
+                probabilite_pluie=float(current['probabilite_pluie']),
+            )
+
         peut_semer = self._evaluer_semis(
-            exploitation, dans_periode, cal_ref, current, forecast, mois_actuel
+            exploitation, dans_periode, cal_ref, current, forecast, mois_actuel, ml_pred
         )
-        arroser = self._evaluer_arrosage(exploitation, current, forecast)
-        recolte = self._evaluer_recolte(exploitation, forecast)
-        risques = self._evaluer_risques(forecast)
+        arroser = self._evaluer_arrosage(exploitation, current, forecast, ml_pred)
+        recolte = self._evaluer_recolte(exploitation, forecast, ml_pred)
+        risques = self._evaluer_risques(forecast, ml_pred)
         resume = self._generer_resume(
             exploitation, peut_semer, arroser, recolte, risques
         )
@@ -86,10 +104,14 @@ class DecisionEngine:
                 'type_sol': exploitation.type_sol.nom,
                 'source_meteo': meteo['source'],
                 'date_analyse': today.isoformat(),
+                'modele_ml': bool(ml_pred),
+                'source_ml': 'One Acre Fund + LSMS-ISA' if ml_pred else None,
             },
         }
 
-    def _evaluer_semis(self, exploitation, dans_periode, cal_ref, current, forecast, mois):
+    def _evaluer_semis(
+        self, exploitation, dans_periode, cal_ref, current, forecast, mois, ml_pred
+    ):
         culture = exploitation.culture
 
         if exploitation.statut == Exploitation.Statut.DEJA_SEME:
@@ -158,18 +180,36 @@ class DecisionEngine:
                 'Attendez une période plus humide ou prévoyez un apport d\'eau après le semis.'
             )
 
-        peut = (
+        # Règles métier (secours)
+        peut_regles = (
             dans_periode
             and SEUIL_TEMP_SEMIS_MIN <= temp <= SEUIL_TEMP_SEMIS_MAX
             and not forte_pluie
             and not sol_trop_sec
         )
 
-        explication = ' '.join(raisons_positives + raisons_negatives)
+        # ML prioritaire si disponible (appris sur mois de semis observés en Afrique)
+        if ml_pred is not None:
+            peut = bool(ml_pred.get('peut_semer'))
+            if peut:
+                raisons_positives.append(
+                    'Le modèle ML (données terrain Afrique : One Acre Fund / LSMS-ISA) '
+                    f'indique que {MOIS_FR[mois]} est un mois favorable au semis '
+                    f'pour des conditions proches des vôtres.'
+                )
+            else:
+                raisons_negatives.append(
+                    'Le modèle ML (données terrain Afrique : One Acre Fund / LSMS-ISA) '
+                    f'n\'associe pas fortement le mois de {MOIS_FR[mois]} à un semis réussi '
+                    'dans des contextes similaires.'
+                )
+        else:
+            peut = peut_regles
 
+        explication = ' '.join(raisons_positives + raisons_negatives)
         return {'reponse': peut, 'explication': explication}
 
-    def _evaluer_arrosage(self, exploitation, current, forecast):
+    def _evaluer_arrosage(self, exploitation, current, forecast, ml_pred):
         culture = exploitation.culture
 
         if exploitation.statut == Exploitation.Statut.A_SEMER:
@@ -186,29 +226,46 @@ class DecisionEngine:
         pluie_mm = forecast[0]['pluie_mm'] if forecast else 0
         temp = current['temperature']
 
-        besoin = (
+        besoin_regles = (
             humidite < SEUIL_HUMIDITE_ARROSAGE
             and pluie_prevue < SEUIL_PROBA_PLUIE_ARROSAGE
             and pluie_mm < SEUIL_PLUIE_ARROSAGE_MM
         )
 
-        if besoin:
-            explication = (
-                f'L\'humidité est de {humidite}% (seuil : {SEUIL_HUMIDITE_ARROSAGE}%) '
-                f'et peu de pluie est prévue ({pluie_prevue}%, {pluie_mm} mm). '
-                f'Avec une température de {temp:.0f}°C, un apport d\'eau est recommandé '
-                f'pour votre {culture.nom} sur sol {exploitation.type_sol.nom}.'
-            )
+        if ml_pred is not None:
+            besoin = bool(ml_pred.get('doit_arroser'))
+            if besoin:
+                explication = (
+                    f'Le modèle ML (parcelles irriguées / saisons sèches observées en Afrique) '
+                    f'recommande un apport d\'eau pour votre {culture.nom} '
+                    f'(humidité {humidite}%, pluie prévue {pluie_prevue}% / {pluie_mm} mm, '
+                    f'température {temp:.0f}°C, sol {exploitation.type_sol.nom}).'
+                )
+            else:
+                explication = (
+                    f'Selon le modèle ML et la météo actuelle (humidité {humidite}%, '
+                    f'pluie {pluie_prevue}% / {pluie_mm} mm), '
+                    f'pas besoin d\'arroser votre {culture.nom} aujourd\'hui.'
+                )
         else:
-            explication = (
-                f'L\'humidité actuelle ({humidite}%) et les précipitations prévues '
-                f'({pluie_prevue}%, {pluie_mm} mm) sont suffisantes. '
-                f'Pas besoin d\'arroser votre {culture.nom} aujourd\'hui.'
-            )
+            besoin = besoin_regles
+            if besoin:
+                explication = (
+                    f'L\'humidité est de {humidite}% (seuil : {SEUIL_HUMIDITE_ARROSAGE}%) '
+                    f'et peu de pluie est prévue ({pluie_prevue}%, {pluie_mm} mm). '
+                    f'Avec une température de {temp:.0f}°C, un apport d\'eau est recommandé '
+                    f'pour votre {culture.nom} sur sol {exploitation.type_sol.nom}.'
+                )
+            else:
+                explication = (
+                    f'L\'humidité actuelle ({humidite}%) et les précipitations prévues '
+                    f'({pluie_prevue}%, {pluie_mm} mm) sont suffisantes. '
+                    f'Pas besoin d\'arroser votre {culture.nom} aujourd\'hui.'
+                )
 
         return {'reponse': besoin, 'explication': explication}
 
-    def _evaluer_recolte(self, exploitation, forecast):
+    def _evaluer_recolte(self, exploitation, forecast, ml_pred):
         culture = exploitation.culture
         duree = culture.duree_recolte_jours
 
@@ -229,6 +286,7 @@ class DecisionEngine:
             }
 
         date_recolte = date_semis + timedelta(days=duree)
+        today = timezone.localdate()
 
         explication = (
             f'À partir de votre date de semis ({date_semis.strftime("%d/%m/%Y")}) '
@@ -236,6 +294,19 @@ class DecisionEngine:
             f'la récolte du {culture.nom} est estimée autour du '
             f'{date_recolte.strftime("%d/%m/%Y")}.'
         )
+
+        # Signal ML : le mois actuel ressemble aux mois de récolte observés
+        if ml_pred is not None and ml_pred.get('pret_a_recolter'):
+            explication += (
+                ' Le modèle ML (mois de récolte observés One Acre Fund / LSMS-ISA) '
+                'indique que le mois en cours correspond souvent à une période de récolte '
+                'dans des contextes agricoles africains similaires.'
+            )
+        elif ml_pred is not None and today < date_recolte:
+            explication += (
+                ' Selon le modèle ML, ce n\'est en général pas encore le mois de récolte '
+                'typique pour ce type de situation.'
+            )
 
         pluie_recolte = any(
             d['pluie_mm'] > SEUIL_PLUIE_FORTE_MM for d in forecast[-3:]
@@ -250,9 +321,10 @@ class DecisionEngine:
             'date_estimee': date_recolte.isoformat(),
             'date_estimee_affichage': date_recolte.strftime('%d/%m/%Y'),
             'explication': explication,
+            'pret_selon_ml': bool(ml_pred and ml_pred.get('pret_a_recolter')),
         }
 
-    def _evaluer_risques(self, forecast):
+    def _evaluer_risques(self, forecast, ml_pred):
         risques = []
 
         for day in forecast:
@@ -308,6 +380,26 @@ class DecisionEngine:
                         'et peu de pluie. Surveillez l\'hydratation du sol.'
                     ),
                 })
+
+        # Risques issus du modèle (chocs observés sur parcelles africaines)
+        if ml_pred is not None:
+            mapping = [
+                ('risque_secheresse', 'Sécheresse (ML)', 'élevé',
+                 'Le modèle ML signale un profil proche de parcelles ayant subi une sécheresse.'),
+                ('risque_pluie_forte', 'Fortes pluies / inondation (ML)', 'élevé',
+                 'Le modèle ML signale un profil proche de parcelles touchées par excès d\'eau ou inondation.'),
+                ('risque_ravageurs', 'Ravageurs (ML)', 'modéré',
+                 'Le modèle ML signale un profil proche de parcelles touchées par des ravageurs.'),
+                ('risque_maladie', 'Maladie / choc cultural (ML)', 'modéré',
+                 'Le modèle ML signale un profil proche de parcelles ayant subi un choc cultural / maladie.'),
+            ]
+            for key, typ, niveau, desc in mapping:
+                if ml_pred.get(key):
+                    risques.append({
+                        'type': typ,
+                        'niveau': niveau,
+                        'description': desc + ' Source : One Acre Fund / LSMS-ISA.',
+                    })
 
         if not risques:
             risques.append({

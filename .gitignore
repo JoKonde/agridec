@@ -5,3 +5,13 @@ __pycache__/
 .venv/
 venv/
 staticfiles/
+
+# Datasets bruts volumineux (télécharger via URLs du README)
+ml/datasets/raw/*
+!ml/datasets/raw/.gitkeep
+
+# CSV traité et modèle (fichiers lourds — régénérer via les scripts ml/)
+ml/datasets/processed/*.csv
+!ml/datasets/processed/.gitkeep
+ml/artifacts/*.joblib
+!ml/artifacts/.gitkeep

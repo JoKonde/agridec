@@ -150,6 +150,11 @@ FAO_COUNTRY_CODE = 'CD'  # République Démocratique du Congo
 FAO_LANGUAGE = 'fr'
 FAO_API_TIMEOUT = 60
 
+# Machine learning — modèle entraîné sur One Acre Fund + LSMS-ISA
+# Si le fichier modèle est absent, DecisionEngine utilise uniquement les règles métier.
+USE_ML_MODEL = True
+ML_MODEL_PATH = BASE_DIR / 'ml' / 'artifacts' / 'agridec_model.joblib'
+
 # Sécurité production (activé quand DEBUG=False)
 if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True

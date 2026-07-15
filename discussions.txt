@@ -98,3 +98,149 @@ Fondations & configuration :
 
 Sujet : PremiÃ¨re exploration du projet
 (Ã©tat initial documentÃ© ci-dessus)
+
+--- Session du 15/07/2026 12:48 ---
+Sujet : Feedback jury — entraîner un modèle avec un dataset (clarification rôle ML)
+
+Contexte :
+- L'étudiante a défendu AgriDec ; le jury demande d'entraîner un modèle avec un dataset.
+- Analyse complète du projet (lecture architecture + decision_engine).
+
+Décisions / clarifications :
+- AgriDec aujourd'hui = 100 % règles métier (pas de ML). Cœur = core/services/decision_engine.py avec constantes SEUIL_*.
+- Données actuelles : FAO (calendrier en BDD) + Open-Meteo (API live) + saisie user.
+- Un modèle ML remplacerait surtout les verdicts des méthodes _evaluer_semis, _evaluer_arrosage, _evaluer_risques (et éventuellement affinage récolte) — pas les APIs, pas l'auth, pas l'UI, pas l'import FAO.
+- Le dataset servirait à apprendre des décisions à partir d'exemples historiques labellisés (succès/échec semis, besoin irrigation, risques), au lieu de seuils génériques hardcodés.
+- Point critique : les Analyse.resultat actuelles ne sont PAS un bon dataset d'entraînement (ce sont des sorties de règles, pas des résultats terrain). Il faut un dataset externe labellisé.
+
+État d'avancement :
+- Clarification conceptuelle faite ; aucun code ML ajouté (attente permission utilisateur).
+
+Prochaines actions (si validation) :
+- Choisir cible ML (semis et/ou arrosage et/ou risques)
+- Trouver/construire un dataset labellisé adapté RDC/agriculture
+- Entraîner + intégrer model.predict dans DecisionEngine en gardant le même format JSON UI
+
+--- Session du 15/07/2026 14:06 ---
+Sujet : Colonnes du dataset ML pour AgriDec
+
+Clarification :
+- Features = ce que le projet connaît déjà (exploitation + FAO + météo)
+- Labels = ce qu'on veut prédire (semis / arrosage / risques) — issus de résultats terrain, pas des Analyses actuelles
+- Structure type CSV proposée à l'utilisateur (colonnes features + colonnes cibles)
+
+Prochaines actions :
+- Attendre choix cible (1 modèle ou 3) et source dataset avant tout code
+
+--- Session du 15/07/2026 14:15 ---
+Sujet : Recherche internet — datasets agricoles observations réelles
+
+Résultats clés :
+1) One Acre Fund MEL maize (Zenodo 11122388) — ~14 773 parcelles Afrique (2016-2022) : GPS, dates semis/récolte, sol, climat, rendement, adversités. Meilleur match Afrique réelle pour AgriDec (labels à dériver).
+2) N2Africa / IITA — essais agronomiques terrain (ex. Éthiopie) : culture, pluie, sol.
+3) Pan African Trials Network — soja multi-pays Afrique.
+4) HarvestStat Africa / FAOSTAT — stats agrégées (pas parcelle jour par jour).
+5) Kaggle Crop Recommendation — très utilisé en soutenance mais Inde/augmenté, prédire QUELLE culture (pas quand semer/arroser) ; PAS idéal comme « observations terrain RDC ».
+6) Datasets irrigation (Italie, Flandre, Purdue) — réels mais hors Afrique.
+
+Décision proposée à l'utilisateur :
+- Pour le jury : privilégier One Acre Fund (vrai terrain Afrique) + expliquer adaptation des labels.
+- Aucun dataset ne fournit directement peut_semer / doit_arroser pour la RDC.
+
+Prochaines actions : attendre choix dataset avant intégration ML
+
+--- Session du 15/07/2026 14:24 ---
+Sujet : Existe-t-il un dataset avec observations semer/arroser/récolter/risques (les 4 questions AgriDec) ?
+
+Réponse claire :
+- NON : aucun dataset public réel ne fournit déjà les 4 labels ensemble (peut_semer, doit_arroser, date/récolte, risques) + culture + sol + météo jour, pour la RDC.
+- Plus proche structurellement : AgriField-Manipur (irrigation + risque pest + météo + sol + culture) mais SYNTHÉTIQUE / règles, Inde.
+- Terrain Afrique (One Acre Fund, LSMS) : dates semis/récolte, chocs, parfois irrigation — pas les décisions quotidiennes Oui/Non d'AgriDec.
+- Articles ML admettent souvent l'absence de ground-truth irrigation et fabriquent un score.
+
+Nuance importante pour le projet :
+- Si on génère les labels via FAO + seuils météo (ce qu'on connaît déjà), on entraîne le modèle à reproduire decision_engine — acceptable pédagogiquement, pas de vraies observations terrain.
+
+--- Session du 15/07/2026 14:34 ---
+Sujet : Quoi stocker en BDD pour entraîner un modèle sur les 4 questions AgriDec
+
+Clarification donnée :
+- Il faut une table d'observations labellisées (features + 4 cibles), pas seulement Analyse.resultat des règles.
+- Features : culture, sol, GPS, date/mois, météo du jour, contexte FAO.
+- Labels : peut_semer, doit_arroser, peut_recolter (ou date), risques — validés terrain ou expert.
+- Boucle feedback agriculteur nécessaire pour accumuler de vraies observations.
+
+--- Session du 15/07/2026 14:35 ---
+Sujet : Contenu exact du dataset pour entraîner et répondre aux 4 questions AgriDec
+
+Clarification donnée à l'utilisateur :
+- Features communes (entrées) + 4 familles de labels (sorties) : peut_semer, doit_arroser, pret_a_recolter / date_recolte, risques
+- Une ligne = une situation (culture + sol + météo + contexte FAO/statut) + les bonnes réponses déjà connues
+- Sans les labels, on ne peut pas entraîner en supervisé
+
+--- Session du 15/07/2026 14:38 ---
+Sujet : Dataset EXTERNE (pas decision_engine) avec infos pour les 4 questions
+
+Réponse utilisateur :
+- Aucun dataset public prêt ne contient les 4 labels AgriDec ensemble (semer + arroser + récolter + risques) hors de notre moteur.
+- Plus proche externe : AgriField-Manipur (suitability/irrigation/risque pest — mais synthétique Inde, pas récolte/semis exacts AgriDec)
+- Terrain réel partiel : it4lia (arroser), One Acre Fund/LSMS (semis/récolte/chocs), Kaggle irrigation (arroser seul)
+- Pas généré par decision_engine.py
+
+--- Session du 15/07/2026 14:42 ---
+Sujet : Comparaison AgriField-Manipur vs One Acre Fund / LSMS pour AgriDec
+
+Utilisateur intéressé par ces deux familles de datasets.
+Synthèse fournie :
+- AgriField-Manipur : proche structure décisions (suitability, irrigation, risque), Inde, synthétique, ML-ready
+- One Acre Fund : vrai terrain Afrique maïs, dates semis/récolte, rendement, adversités — labels à dériver
+- LSMS-ISA : enquêtes Afrique (mois semis/récolte, irrigation statut, chocs) — réel, plus lourd, labels à dériver
+- Aucun des deux ne remplace les 4 questions telles quelles ; stratégie hybride possible
+
+--- Session du 15/07/2026 15:10 ---
+Sujet : Choix datasets validé — One Acre Fund + LSMS-ISA (pas AgriField-Manipur)
+
+Décision utilisateur :
+- Utiliser One Acre Fund (maïs Afrique) et LSMS-ISA (Banque mondiale)
+- Raison : plus proches de la RDC / Afrique que Manipur (Inde)
+
+Implications :
+- Labels AgriDec (peut_semer, doit_arroser, pret_a_recolter, risques) à dériver, pas présents tels quels
+- Arrosage = point faible des deux datasets (pas de décision journalière irrigation)
+- Plan d'intégration à proposer ; attendre permission avant tout code/téléchargement lourd
+
+--- Session du 15/07/2026 15:50 ---
+Sujet : Integration ML One Acre Fund + LSMS-ISA
+
+Realise :
+- Telechargement raw : one_acre_fund_maize.csv, lsms_plotcrop.dta, lsms_plot.dta
+- Script adaptation ml/scripts/build_agridec_dataset.py (12 lignes/mois, labels peut_semer / pret_a_recolter / doit_arroser / risques)
+- Dataset : ~477k lignes -> ml/datasets/processed/agridec_training.csv
+- Entrainement Random Forest multi-sorties -> ml/artifacts/agridec_model.joblib
+- core/services/ml_predictor.py + decision_engine hybride (ML prioritaire, regles en secours)
+- Commandes Django build_ml_dataset / train_ml_model
+- README.md : URLs telechargement, ce qu'il y a / ce qui manque / adaptation par mois
+- requirements.txt : pandas, sklearn, joblib, pyreadstat
+- .gitignore : raw + csv traite + joblib (trop lourds)
+
+Prochaines actions :
+- Tester analyse UI avec modele charge
+- Eventuellement ameliorer F1 peut_semer (desequilibre 1/12)
+
+--- Session du 15/07/2026 16:06 ---
+Sujet : Scripts telechargement + adaptation documentes
+
+Ajoute :
+- ml/scripts/download_datasets.py (URLs Zenodo, progression, --force)
+- ml/scripts/run_ml_pipeline.py (download -> build -> train)
+- manage.py download_ml_datasets
+- README mis a jour (table des scripts)
+
+--- Session du 15/07/2026 16:15 ---
+Sujet : README — inventaire pays / cultures / sols des datasets telecharges
+
+Ajoute dans README.md un inventaire reel :
+- One Acre Fund : 7 pays, mais seul, sol via soil_clay/pH
+- LSMS Plotcrop : 7 pays, nombreuses cultures (top familles listees)
+- LSMS Plot : meme zone Afrique, soil_fertility_index + irrigated
+- Note : pas de RDC dans les sources

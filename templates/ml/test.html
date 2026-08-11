@@ -1,0 +1,97 @@
+{% extends 'base_app.html' %}
+{% load static %}
+
+{% block title %}Tester le ML — AgriDec{% endblock %}
+{% block topbar_title %}Tester le ML{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/analyse-page.css' %}">
+<link rel="stylesheet" href="{% static 'css/form-page.css' %}">
+<link rel="stylesheet" href="{% static 'css/ml-test.css' %}">
+{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1 class="page-title">Tester le modèle ML</h1>
+  <p class="page-subtitle">
+    Appelle uniquement le modèle entraîné (One Acre Fund + LSMS-ISA),
+    sans les règles métier ni le calendrier FAO.
+    Chaque réponse est expliquée, y compris le lien avec les données d’entraînement.
+  </p>
+  {% if modele_ok %}
+  <span class="badge badge-success">Modèle chargé (agridec_model.joblib)</span>
+  {% else %}
+  <span class="badge badge-danger">Modèle absent — lancez le pipeline ML</span>
+  {% endif %}
+</header>
+
+<section class="card ml-test-intro">
+  <h2 class="analyse-card-title">Rappel important</h2>
+  <p>
+    Ce test montre ce que le <strong>ML seul</strong> répond.
+    Sur la page Analyse d’une culture, le moteur peut combiner ML + FAO + météo.
+    Ici, on isole le modèle pour comprendre ses biais liés aux datasets.
+  </p>
+</section>
+
+<form method="post" class="card form-card ml-test-form" novalidate>
+  {% csrf_token %}
+  <h2 class="analyse-card-title">Paramètres de test</h2>
+
+  {% if form.non_field_errors %}
+  <div class="form-errors">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <div class="ml-test-grid">
+    {% for field in form %}
+    <div class="form-group">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <button type="submit" class="btn btn-primary" {% if not modele_ok %}disabled{% endif %}>
+    Lancer la prédiction ML
+  </button>
+</form>
+
+{% if predictions and explications %}
+<section class="ml-results">
+  <header class="page-header">
+    <h2 class="page-title">Résultats bruts du modèle</h2>
+    <p class="page-subtitle">
+      Entrées envoyées :
+      {{ entrees.culture }} · {{ entrees.type_sol }} · mois {{ entrees.mois }} ·
+      GPS ({{ entrees.latitude }}, {{ entrees.longitude }}) ·
+      {{ entrees.temperature }}°C · humidité {{ entrees.humidite }}% ·
+      pluie {{ entrees.pluie_mm }} mm ({{ entrees.probabilite_pluie }}%) ·
+      vent {{ entrees.vent_kmh }} km/h
+    </p>
+  </header>
+
+  <div class="card ml-raw">
+    <h3 class="analyse-card-title">Dict de prédiction (0 / 1)</h3>
+    <pre class="ml-raw-json">{% for k, v in predictions.items %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+  </div>
+
+  <div class="analyse-grid ml-explain-grid">
+    {% for item in explications %}
+    <article class="analyse-card card {% if item.valeur %}analyse-card--yes{% else %}analyse-card--no{% endif %}">
+      <div class="analyse-card-header">
+        <h2 class="analyse-card-title">{{ item.titre }}</h2>
+        <span class="analyse-verdict {% if item.valeur %}verdict-yes{% else %}verdict-no{% endif %}">
+          {{ item.reponse }}
+        </span>
+      </div>
+      <p class="analyse-explication"><strong>Pourquoi cette réponse ?</strong> {{ item.explication }}</p>
+      <p class="ml-cause"><strong>Lié aux données d’entraînement ?</strong> {{ item.cause_donnees }}</p>
+      <p class="ml-detail">{{ item.detail_entrainement }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

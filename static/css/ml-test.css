@@ -1,0 +1,78 @@
+/* Page Tester le ML */
+
+.ml-test-form .form-input,
+.ml-test-form .form-select {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.ml-test-form .form-group label {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-sm);
+}
+
+.ml-test-form .field-error {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-top: 0.25rem;
+}
+
+.ml-test-intro {
+  margin-bottom: var(--space-xl);
+  border-left: 4px solid var(--color-primary);
+}
+
+.ml-test-form {
+  margin-bottom: var(--space-2xl);
+}
+
+.ml-test-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+}
+
+.ml-raw {
+  margin-bottom: var(--space-xl);
+}
+
+.ml-raw-json {
+  margin: 0;
+  padding: var(--space-md);
+  background: var(--color-border-light, #f0f0f0);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.ml-cause {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-sm, 0.9rem);
+  color: var(--color-text);
+}
+
+.ml-detail {
+  margin-top: var(--space-xs);
+  font-size: var(--font-size-sm, 0.85rem);
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
+.ml-explain-grid {
+  margin-bottom: var(--space-2xl);
+}
+
+@media (max-width: 720px) {
+  .ml-test-grid {
+    grid-template-columns: 1fr;
+  }
+}

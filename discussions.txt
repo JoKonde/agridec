@@ -244,3 +244,13 @@ Ajoute dans README.md un inventaire reel :
 - LSMS Plotcrop : 7 pays, nombreuses cultures (top familles listees)
 - LSMS Plot : meme zone Afrique, soil_fertility_index + irrigated
 - Note : pas de RDC dans les sources
+
+--- Session du 11/08/2026 17:59 ---
+Sujet : Page Tester le ML avec explications par question
+
+Ajoute :
+- URL /ml/tester/ (ml_test)
+- Formulaire MlTestForm
+- core/services/ml_explain.py (pourquoi Oui/Non + lien datasets)
+- templates/ml/test.html + ml-test.css
+- Lien sidebar « Tester le ML »

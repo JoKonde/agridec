@@ -12,4 +12,5 @@ urlpatterns = [
   path('cultures/<int:pk>/analyser/', views.exploitation_analyse_view, name='exploitation_analyse'),
   path('analyses/', views.analyses_list_view, name='analyses_list'),
   path('analyses/<int:pk>/', views.analyse_detail_view, name='analyse_detail'),
+  path('ml/tester/', views.ml_test_view, name='ml_test'),
 ]

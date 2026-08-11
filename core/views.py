@@ -1,11 +1,15 @@
+from datetime import date
+
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import ExploitationForm, LoginForm, RegisterForm
+from .forms import ExploitationForm, LoginForm, MlTestForm, RegisterForm
 from .models import Analyse, Exploitation
 from .services.decision_engine import DecisionEngine
+from .services.ml_explain import explain_all
+from .services.ml_predictor import model_available, predict_decisions
 from .services.weather_service import WeatherApiError
 
 def home(request):
@@ -143,6 +147,78 @@ def analyse_detail_view(request, pk):
         'resultat': analyse.resultat,
         'analyse_date': analyse.date_analyse,
         'lecture_seule': True,
+    })
+
+
+@login_required
+def ml_test_view(request):
+    """
+    Page de test du modèle ML seul.
+    Affiche toutes les prédictions + explications liées aux données d'entraînement.
+    """
+    initial = {'mois': date.today().month}
+    predictions = None
+    explications = None
+    entrees = None
+    modele_ok = model_available()
+
+    if request.method == 'POST':
+        form = MlTestForm(request.POST)
+        if form.is_valid() and modele_ok:
+            data = form.cleaned_data
+            culture_nom = data['culture'].nom
+            type_sol_nom = data['type_sol'].nom
+            entrees = {
+                'culture': culture_nom,
+                'type_sol': type_sol_nom,
+                'mois': data['mois'],
+                'latitude': data['latitude'],
+                'longitude': data['longitude'],
+                'temperature': data['temperature'],
+                'humidite': data['humidite'],
+                'pluie_mm': data['pluie_mm'],
+                'probabilite_pluie': data['probabilite_pluie'],
+                'vent_kmh': data['vent_kmh'],
+            }
+            predictions = predict_decisions(
+                culture=culture_nom,
+                type_sol=type_sol_nom,
+                mois=data['mois'],
+                latitude=data['latitude'],
+                longitude=data['longitude'],
+                temperature=data['temperature'],
+                pluie_mm=data['pluie_mm'],
+                humidite=data['humidite'],
+                vent_kmh=data['vent_kmh'],
+                probabilite_pluie=data['probabilite_pluie'],
+            )
+            if predictions is None:
+                messages.error(
+                    request,
+                    'Le modèle n\'a pas pu prédire. Vérifiez ml/artifacts/agridec_model.joblib.',
+                )
+            else:
+                explications = explain_all(
+                    predictions,
+                    mois=data['mois'],
+                    culture=culture_nom,
+                )
+        elif not modele_ok:
+            messages.error(
+                request,
+                'Modèle absent. Exécutez : python ml/scripts/run_ml_pipeline.py',
+            )
+        else:
+            messages.error(request, 'Veuillez corriger les erreurs du formulaire.')
+    else:
+        form = MlTestForm(initial=initial)
+
+    return render(request, 'ml/test.html', {
+        'form': form,
+        'modele_ok': modele_ok,
+        'predictions': predictions,
+        'explications': explications,
+        'entrees': entrees,
     })
 
 

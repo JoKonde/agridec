@@ -146,3 +146,49 @@ class ExploitationForm(forms.ModelForm):
             exploitation.save()
 
         return exploitation
+
+
+class MlTestForm(forms.Form):
+    """
+    Formulaire pour tester le modèle ML seul (sans règles métier / FAO).
+    Permet de rejouer une situation culture + sol + mois + météo.
+    """
+
+    culture = forms.ModelChoiceField(
+        label='Culture',
+        queryset=Culture.objects.none(),
+        empty_label=None,
+    )
+    type_sol = forms.ModelChoiceField(
+        label='Type de sol',
+        queryset=TypeSol.objects.none(),
+        empty_label=None,
+    )
+    mois = forms.TypedChoiceField(
+        label='Mois à tester',
+        coerce=int,
+        choices=[
+            (1, 'Janvier'), (2, 'Février'), (3, 'Mars'), (4, 'Avril'),
+            (5, 'Mai'), (6, 'Juin'), (7, 'Juillet'), (8, 'Août'),
+            (9, 'Septembre'), (10, 'Octobre'), (11, 'Novembre'), (12, 'Décembre'),
+        ],
+    )
+    latitude = forms.FloatField(label='Latitude', initial=-4.325)
+    longitude = forms.FloatField(label='Longitude', initial=15.322)
+    temperature = forms.FloatField(label='Température (°C)', initial=28.0)
+    humidite = forms.IntegerField(label='Humidité (%)', min_value=0, max_value=100, initial=64)
+    pluie_mm = forms.FloatField(label='Pluie (mm)', initial=0.0, min_value=0)
+    probabilite_pluie = forms.IntegerField(
+        label='Probabilité de pluie (%)', min_value=0, max_value=100, initial=0,
+    )
+    vent_kmh = forms.FloatField(label='Vent (km/h)', initial=10.0, min_value=0)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['culture'].queryset = Culture.objects.all().order_by('nom')
+        self.fields['type_sol'].queryset = TypeSol.objects.all().order_by('nom')
+        for name, field in self.fields.items():
+            css = 'form-input'
+            if isinstance(field.widget, forms.Select):
+                css = 'form-select'
+            field.widget.attrs.setdefault('class', css)

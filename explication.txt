@@ -1,0 +1,346 @@
+================================================================================
+AgriDec — Explication du pipeline Machine Learning (pour un étudiant)
+Document créé le : 12/08/2026
+================================================================================
+
+Objectif de ce texte
+--------------------
+Expliquer clairement, étape par étape :
+  1) d’où viennent les datasets téléchargés ;
+  2) avec quels scripts on les a récupérés ;
+  3) comment on a construit le dataset final AgriDec ;
+  4) quelles colonnes correspondent aux 4 questions de l’app ;
+  5) quels éléments importants (météo, GPS, etc.) alimentent le modèle ;
+  6) quelle « précision » on a obtenue ;
+  7) pourquoi il y a des pertes de précision (pas vraiment la RDC) ;
+  8) comment le modèle est entraîné puis utilisé dans l’application.
+
+
+================================================================================
+1. POURQUOI ON A BESOIN D’UN DATASET ?
+================================================================================
+
+AgriDec aide l’agriculteur à répondre à 4 questions :
+  - Puis-je semer ?
+  - Dois-je arroser ?
+  - Quand / puis-je récolter ?
+  - Quels risques (sécheresse, pluie forte, ravageurs, maladie) ?
+
+Au départ, le projet répondait surtout avec des RÈGLES MÉTIER (seuils
+température, humidité, pluie) + calendrier FAO + météo Open-Meteo.
+
+Le jury a demandé d’ENTRAÎNER un modèle avec un dataset.
+Problème : il n’existe pas sur Internet un dataset prêt avec exactement
+ces 4 colonnes Oui/Non pour la RDC.
+Donc on a pris des enquêtes agricoles RÉELLES en Afrique, puis on les a
+ADAPTÉES pour coller aux questions AgriDec.
+
+
+================================================================================
+2. LES DATASETS TÉLÉCHARGÉS (SOURCES)
+================================================================================
+
+On utilise DEUX sources ouvertes, proches du contexte Afrique
+(petits producteurs, cultures, chocs climatiques).
+
+---------------------------------------------------------------------------
+A) One Acre Fund — enquête maïs Afrique (2016–2022)
+---------------------------------------------------------------------------
+  Page Zenodo :
+    https://zenodo.org/records/11122388
+
+  Fichier CSV téléchargé :
+    https://zenodo.org/records/11122388/files/One_Acre_Fund_MEL_maize_survey_data_2016-2022.csv?download=1
+
+  Fichier local :
+    ml/datasets/raw/one_acre_fund_maize.csv
+
+  Contenu utile :
+    - pays (Kenya, Tanzanie, Rwanda, Zambie, Burundi, Nigeria, Ouganda…)
+    - GPS (lat, lon)
+    - date de semis, date de récolte
+    - sol (ex. % argile, pH)
+    - climat saisonnier (pluie, température moyenne de saison)
+    - rendement, adversités (excès d’eau, maladies, ravageurs…)
+
+  Culture : MAÏS uniquement.
+
+---------------------------------------------------------------------------
+B) LSMS-ISA — Banque mondiale (enquêtes ménages agricoles Afrique)
+---------------------------------------------------------------------------
+  Projet :
+    https://www.worldbank.org/en/programs/lsms/initiatives/lsms-isa
+
+  Page Zenodo (jeu harmonisé) :
+    https://zenodo.org/records/15773365
+
+  Fichiers :
+    Plotcrop (semis / récolte / chocs) :
+      https://zenodo.org/records/15773365/files/Plotcrop_dataset.dta?download=1
+      → ml/datasets/raw/lsms_plotcrop.dta
+
+    Plot (irrigation, indices de sol) :
+      https://zenodo.org/records/15773365/files/Plot_dataset.dta?download=1
+      → ml/datasets/raw/lsms_plot.dta
+
+  Contenu utile :
+    - pays (Ouganda, Éthiopie, Tanzanie, Nigeria, Malawi, Mali, Niger…)
+    - nombreuses cultures (maïs, manioc, haricot, riz, sorgho…)
+    - mois de semis / mois de récolte (format Stata → converti en 1..12)
+    - chocs : sécheresse, pluie, inondation, ravageurs…
+    - irrigation de la parcelle (oui/non)
+    - GPS (coordonnées d’enquête)
+
+  IMPORTANT : AUCUN de ces deux datasets ne contient la RDC.
+  On les utilise comme base d’apprentissage « Afrique », puis l’app
+  croise avec le calendrier FAO RDC + la météo GPS de l’agriculteur.
+
+
+================================================================================
+3. AVEC QUELS SCRIPTS ON A TÉLÉCHARGÉ ET PRÉPARÉ LES DONNÉES ?
+================================================================================
+
+Tous les scripts sont dans : ml/scripts/
+
+  1) download_datasets.py
+     → télécharge les 3 fichiers bruts dans ml/datasets/raw/
+     Commande :
+       python ml/scripts/download_datasets.py
+     (ou : python manage.py download_ml_datasets)
+
+  2) build_agridec_dataset.py
+     → ADAPTE les bruts et produit le dataset final AgriDec
+     Commande :
+       python ml/scripts/build_agridec_dataset.py
+     (ou : python manage.py build_ml_dataset)
+
+  3) train_agridec_model.py
+     → ENTRAÎNE le modèle (scikit-learn Random Forest) et sauvegarde
+       ml/artifacts/agridec_model.joblib
+     Commande :
+       python ml/scripts/train_agridec_model.py
+     (ou : python manage.py train_ml_model)
+
+  Pipeline complet (les 3 étapes) :
+       python ml/scripts/run_ml_pipeline.py
+
+
+================================================================================
+4. COMMENT ON A CONSTITUÉ LE DATASET FINAL AGRIDEC ?
+================================================================================
+
+Fichier final :
+  ml/datasets/processed/agridec_training.csv
+
+Idée centrale (adaptation) :
+  Les sources donnent des DATES / MOIS observés (semis, récolte),
+  PAS des colonnes « puis-je semer aujourd’hui ? ».
+
+  Donc, pour CHAQUE parcelle :
+    - on lit le mois de semis et le mois de récolte observés ;
+    - on crée 12 LIGNES (mois = 1 à 12) ;
+    - on génère une MÉTÉO cohérente par mois (saison sèche ↔ pluies),
+      pour que le modèle apprenne aussi l’humidité / la pluie /
+      la température (pas seulement le numéro du mois) ;
+    - on remplit les LABELS Oui/Non (0/1) selon les règles ci-dessous.
+
+Labels créés :
+  - peut_semer = 1          si mois == mois_de_semis_observé
+  - pret_a_recolter = 1     si mois == mois_de_recolte_observé
+  - doit_arroser = 1        si on est en saison de culture ET climat sec
+                            (ou parcelle irriguée / choc sécheresse)
+  - risque_secheresse,
+    risque_pluie_forte      = chocs terrain + climat du mois
+  - risque_ravageurs,
+    risque_maladie          = adversités déclarées dans les enquêtes
+
+Taille approximative après adaptation :
+  ~477 000 lignes (One Acre Fund + échantillon LSMS).
+
+
+================================================================================
+5. COLONNES CHOISIES ↔ QUESTIONS AGRIDEC
+================================================================================
+
+A) ENTRÉES du modèle (features) — ce qu’on lui donne pour prédire
+-----------------------------------------------------------------
+  mois                  → contexte calendaire (semis / récolte / saison)
+  latitude, longitude   → GPS / localisation
+  temperature           → météo
+  humidite              → météo
+  pluie_mm              → météo
+  probabilite_pluie     → météo
+  vent_kmh              → météo
+  culture               → type de culture (ex. maïs)
+  type_sol              → sol (Sablonneux, Argileux, Limoneux…)
+
+B) SORTIES du modèle (labels / cibles) — les réponses aux questions
+-------------------------------------------------------------------
+  Question app              Colonne entraînée
+  ----------------------    -------------------------
+  Puis-je semer ?           peut_semer
+  Dois-je arroser ?         doit_arroser
+  Période de récolte ?      pret_a_recolter
+  Risques                   risque_secheresse
+                            risque_pluie_forte
+                            risque_ravageurs
+                            risque_maladie
+
+Éléments IMPORTANTS pour AgriDec (dans l’app complète, pas seulement ML) :
+  - GPS de l’exploitation          → Open-Meteo (météo live)
+  - Culture + type de sol          → saisie utilisateur + référentiel
+  - Calendrier FAO (RDC)           → périodes de semis officielles
+  - Modèle ML                      → verdicts appris sur données Afrique
+  - Règles métier                  → secours si le modèle est absent
+
+
+================================================================================
+6. ENTRAÎNEMENT : QUELLE « PRÉCISION » ON A ATTEINTE ?
+================================================================================
+
+Bibliothèque : scikit-learn (sklearn)
+Algorithme   : RandomForestClassifier + MultiOutputClassifier
+               (un forest par cible : semer, arroser, récolter, risques)
+
+Découpage : ~80 % train / ~20 % test
+            (environ 381 580 lignes train / 95 396 test)
+
+Mesure utilisée : score F1 (bon pour classes déséquilibrées ;
+                  ex. un seul mois sur 12 est « bon mois de semis »).
+
+Résultats du dernier entraînement (ml/artifacts/model_meta.json) :
+
+  Cible                 F1 (test)     Lecture simple
+  --------------------  -----------   ----------------------------------
+  peut_semer            ~0.41 (41 %)  Moyen : peu d’exemples positifs (1/12)
+  doit_arroser          ~0.70 (70 %)  Correct après lien climat/météo
+  pret_a_recolter       ~0.33 (33 %)  Faible : même problème 1 mois / 12
+  risque_secheresse     ~0.78 (78 %)  Bon
+  risque_pluie_forte    ~0.95 (95 %)  Très bon
+  risque_ravageurs      ~0.90 (90 %)  Très bon
+  risque_maladie        ~0.66 (66 %)  Correct
+
+Ce qu’on VOULAIT :
+  un modèle capable d’aider sur les 4 questions, en tenant compte
+  du climat (sinon le curseur « saison sèche / pluies » ne changeait rien).
+
+Ce qu’on a OBTENU :
+  - bon sur arrosage + risques climatiques liés à la météo ;
+  - plus faible sur semis / récolte (liés surtout au mois observé,
+    donc classe rare).
+
+Artefact produit :
+  ml/artifacts/agridec_model.joblib
+
+
+================================================================================
+7. PERTES DE PRÉCISION / LIMITES (IMPORTANT POUR LA SOUTENANCE)
+================================================================================
+
+1) Pas de données RDC dans l’entraînement
+   → le modèle apprend sur d’autres pays d’Afrique.
+   → pertes possibles quand on applique à Kinshasa / RDC
+     (sols, calendriers, pratiques d’irrigation différents).
+
+2) Les labels « Oui/Non » ne sont pas des décisions journalières
+   d’agriculteurs congolais : on les a CONSTRUITS à partir de
+   mois observés + climat synthétique cohérent.
+   → ce n’est pas un « oracle terrain RDC », c’est une adaptation
+     pédagogique et technique.
+
+3) Cultures FAO RDC (ex. « Maïs, sucré », épinard…) ≠ noms exacts
+   du dataset (souvent « maïs », « maize », noms locaux LSMS).
+   → le modèle peut moins bien reconnaître certaines cultures.
+
+4) Sur la page Analyse, météo = Open-Meteo LIVE (ex. humidité 61 %),
+   alors qu’à l’entraînement le « climat sec » était plus extrême
+   (ex. humidité < 55 %). D’où des écarts possibles avec le test ML
+   (où on force saison sèche avec le curseur).
+
+5) Semis / récolte : 1 mois positif sur 12 → F1 plus bas (déséquilibre).
+
+En résumé pour l’étudiant :
+  On a de la VALEUR (vrais terrains Afrique + ML + app),
+  mais on reste HONNÊTE sur les limites géographiques et de labellisation.
+
+
+================================================================================
+8. UTILISATION DANS L’APPLICATION (FICHIERS ET MÉTHODES)
+================================================================================
+
+Configuration :
+  AgriDec/settings.py
+    USE_ML_MODEL = True
+    ML_MODEL_PATH = .../ml/artifacts/agridec_model.joblib
+
+Chargement + prédiction :
+  Fichier  : core/services/ml_predictor.py
+  Méthode  : predict_decisions(...)
+  Rôle     : charge agridec_model.joblib (joblib) et renvoie un dict
+             {peut_semer, doit_arroser, pret_a_recolter, risque_*}
+
+Moteur de décision (branchement dans l’app) :
+  Fichier  : core/services/decision_engine.py
+  Classe   : DecisionEngine
+  Méthode  : analyze(exploitation)
+             → récupère météo Open-Meteo + calendrier FAO
+             → appelle predict_decisions(...)
+             → passe ml_pred aux sous-méthodes :
+                 _evaluer_semis(...)
+                 _evaluer_arrosage(...)
+                 _evaluer_recolte(...)
+                 _evaluer_risques(...)
+  Si le modèle est absent → retour aux RÈGLES MÉTIER seules.
+
+Page d’analyse (utilisateur) :
+  Vue      : core/views.py → exploitation_analyse_view
+  Appelle  : DecisionEngine().analyze(...)
+  Affiche  : templates/cultures/analyse.html
+
+Page pédagogique « Tester le ML » :
+  Vue      : core/views.py → ml_test_view
+  Explique : core/services/ml_explain.py
+  Affiche  : templates/ml/test.html
+  URL      : /ml/tester/
+  Curseur climat : static/js/ml-test-climate.js
+
+
+================================================================================
+9. SCHÉMA SIMPLE À RETENIR
+================================================================================
+
+  [Internet / Zenodo]
+        │  download_datasets.py
+        ▼
+  ml/datasets/raw/   (One Acre Fund CSV + LSMS .dta)
+        │  build_agridec_dataset.py
+        ▼
+  agridec_training.csv   (features + labels des 4 questions)
+        │  train_agridec_model.py  (scikit-learn)
+        ▼
+  agridec_model.joblib
+        │  ml_predictor.predict_decisions
+        ▼
+  DecisionEngine.analyze  (+ FAO + Open-Meteo)
+        │
+        ▼
+  Page Analyse / Tester le ML
+
+
+================================================================================
+10. PHRASE DE SOUTENANCE (VERSION COURTE)
+================================================================================
+
+« Comme il n’existait pas de dataset RDC avec les 4 décisions AgriDec,
+nous avons téléchargé Two sources Afrique ouvertes (One Acre Fund et
+LSMS-ISA), adapté les mois de semis/récolte et un climat mensuel en
+labels Oui/Non, entraîné un Random Forest (scikit-learn), puis branché
+le modèle dans DecisionEngine via ml_predictor, en gardant FAO et
+Open-Meteo. Les scores F1 sont bons sur arrosage et risques climatiques,
+plus faibles sur semis/récolte à cause du déséquilibre des mois, et
+il faut rappeler que l’entraînement n’est pas spécifiquement RDC. »
+
+
+================================================================================
+Fin du document — voir aussi README.md (section Datasets ML)
+================================================================================

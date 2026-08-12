@@ -17,6 +17,7 @@ DEFAULT_MODEL_PATH = Path(settings.BASE_DIR) / 'ml' / 'artifacts' / 'agridec_mod
 
 _bundle = None
 _load_attempted = False
+_loaded_mtime = None
 
 
 def model_available() -> bool:
@@ -25,22 +26,29 @@ def model_available() -> bool:
 
 
 def _load():
-    """Charge le pipeline une seule fois (lazy)."""
-    global _bundle, _load_attempted
-    if _load_attempted:
-        return _bundle
-    _load_attempted = True
+    """Charge le pipeline (recharge si le fichier .joblib a changé)."""
+    global _bundle, _load_attempted, _loaded_mtime
 
     path = Path(getattr(settings, 'ML_MODEL_PATH', DEFAULT_MODEL_PATH))
     if not path.exists():
         _bundle = None
+        _load_attempted = True
+        _loaded_mtime = None
         return None
+
+    mtime = path.stat().st_mtime
+    if _load_attempted and _bundle is not None and _loaded_mtime == mtime:
+        return _bundle
 
     try:
         import joblib
         _bundle = joblib.load(path)
+        _loaded_mtime = mtime
+        _load_attempted = True
     except Exception:
         _bundle = None
+        _load_attempted = True
+        _loaded_mtime = None
     return _bundle
 
 

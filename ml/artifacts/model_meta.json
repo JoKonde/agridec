@@ -1,34 +1,34 @@
 {
   "metrics": {
     "peut_semer": {
-      "f1": 0.3516,
-      "positifs_test": 7880
+      "f1": 0.4095,
+      "positifs_test": 7979
     },
     "doit_arroser": {
-      "f1": 0.5675,
-      "positifs_test": 9072
+      "f1": 0.7039,
+      "positifs_test": 11482
     },
     "pret_a_recolter": {
-      "f1": 0.3457,
-      "positifs_test": 5966
+      "f1": 0.3309,
+      "positifs_test": 6022
     },
     "risque_secheresse": {
-      "f1": 0.5952,
-      "positifs_test": 13023
+      "f1": 0.7787,
+      "positifs_test": 23749
     },
     "risque_pluie_forte": {
-      "f1": 0.4027,
-      "positifs_test": 7769
+      "f1": 0.9549,
+      "positifs_test": 37593
     },
     "risque_ravageurs": {
-      "f1": 0.907,
-      "positifs_test": 26707
+      "f1": 0.8985,
+      "positifs_test": 26783
     },
     "risque_maladie": {
-      "f1": 0.6389,
-      "positifs_test": 22191
+      "f1": 0.6574,
+      "positifs_test": 22014
     }
   },
-  "n_train": 381187,
-  "n_test": 95297
+  "n_train": 381580,
+  "n_test": 95396
 }

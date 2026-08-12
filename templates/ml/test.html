@@ -42,6 +42,36 @@
   <div class="form-errors">{{ form.non_field_errors }}</div>
   {% endif %}
 
+  {# Curseur climat : pluies ↔ saison sèche (ajuste météo + mois aux extrêmes) #}
+  <div class="ml-climate-slider card-inner">
+    <div class="ml-climate-header">
+      <label for="ml-climate-slider" class="ml-climate-title">Climat (saison)</label>
+      <span id="ml-season-label" class="badge badge-muted">Intermédiaire</span>
+    </div>
+    <p class="ml-climate-hint">
+      Glisse comme un volume : à gauche saison des pluies, à droite saison sèche.
+      Ça remplit automatiquement humidité, pluie, proba de pluie et température
+      (et le mois aux extrêmes, car le ML s’appuie beaucoup dessus).
+    </p>
+    <div class="ml-climate-track">
+      <span class="ml-climate-end" aria-hidden="true">Pluies</span>
+      <input
+        type="range"
+        id="ml-climate-slider"
+        name="climate_slider"
+        min="0"
+        max="100"
+        value="50"
+        step="1"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-describedby="ml-season-pct"
+      >
+      <span class="ml-climate-end" aria-hidden="true">Sèche</span>
+    </div>
+    <p id="ml-season-pct" class="ml-climate-pct">50 % vers le sec</p>
+  </div>
+
   <div class="ml-test-grid">
     {% for field in form %}
     <div class="form-group">
@@ -94,4 +124,8 @@
   </div>
 </section>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/ml-test-climate.js' %}"></script>
 {% endblock %}

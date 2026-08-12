@@ -135,17 +135,21 @@ L’**arrosage quotidien** n’est pas observé : on dispose surtout d’une pra
 Fichier produit : `ml/datasets/processed/agridec_training.csv`  
 Script : `ml/scripts/build_agridec_dataset.py`
 
-**Idée d’adaptation (mois observés → labels Oui/Non) :**
+**Idée d’adaptation (mois + climat → labels Oui/Non) — v2 :**
 
-1. Pour chaque parcelle, on lit le **mois de semis** et le **mois de récolte** réellement observés.
-2. On crée **12 lignes** (mois = 1 … 12) avec les mêmes caractéristiques (culture, sol, GPS, météo/saison, risques).
-3. Labels :
-   - `peut_semer = 1` **uniquement** si `mois == mois_de_semis_observé` (sinon 0) ;
-   - `pret_a_recolter = 1` **uniquement** si `mois == mois_de_recolte_observé` ;
-   - `doit_arroser = 1` pendant la saison de culture si la parcelle est **irriguée** (LSMS) ou si la saison est **peu pluvieuse** (One Acre Fund) ;
-   - `risque_secheresse`, `risque_pluie_forte`, `risque_ravageurs`, `risque_maladie` = chocs / adversités déclarés sur la parcelle.
+1. Pour chaque parcelle, on lit le **mois de semis** et le **mois de récolte** observés.
+2. On crée **12 lignes** (mois = 1 … 12) avec culture, sol, GPS.
+3. Pour **chaque mois**, on génère une **météo cohérente** (humidité, pluie mm, proba pluie, température) selon un profil tropical Afrique : saison sèche (surtout juin–septembre) ↔ saison des pluies — **aligné avec le curseur climat** de la page « Tester le ML ».
+4. Labels :
+   - `peut_semer = 1` si `mois == mois_de_semis_observé` ;
+   - `pret_a_recolter = 1` si `mois == mois_de_recolte_observé` ;
+   - `doit_arroser = 1` si en saison de culture **et** climat sec (ou parcelle irriguée / choc sécheresse) ;
+   - `risque_secheresse` / `risque_pluie_forte` = chocs terrain **et** climat du mois ;
+   - `risque_ravageurs` / `risque_maladie` = adversités déclarées.
 
-Ainsi le modèle apprend : *« pour ce type de culture / lieu / conditions, tel mois est un mois de semis (ou de récolte), et tel profil est associé à un besoin d’eau ou à un risque »*.
+Ainsi le modèle apprend aussi : *« climat sec → arroser / sécheresse ; climat humide → pas d’arrosage / risque pluie »*, pas seulement le numéro du mois.
+
+> Après un ré-entraînement, redémarre `runserver` (ou recharge la page Tester le ML) pour prendre le nouveau `agridec_model.joblib`.
 
 ### Scripts de téléchargement, adaptation et entraînement
 
@@ -154,7 +158,7 @@ Tous les scripts sont dans `ml/scripts/` (avec commentaires explicatifs) :
 | Script | Rôle |
 |--------|------|
 | `download_datasets.py` | **Télécharge** One Acre Fund + LSMS-ISA vers `ml/datasets/raw/` |
-| `build_agridec_dataset.py` | **Adapte** les mois observés → labels `peut_semer` / `doit_arroser` / `pret_a_recolter` / risques |
+| `build_agridec_dataset.py` | **Adapte** mois + **climat/météo** → labels AgriDec |
 | `train_agridec_model.py` | **Entraîne** le Random Forest multi-sorties |
 | `run_ml_pipeline.py` | Enchaîne les 3 étapes automatiquement |
 

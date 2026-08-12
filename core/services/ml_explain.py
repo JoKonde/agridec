@@ -56,23 +56,24 @@ def explain_prediction(target: str, value: int, *, mois: int, culture: str) -> d
     elif target == 'doit_arroser':
         if oui:
             explication = (
-                f'Le modèle rapproche votre situation de parcelles marquées « irriguées » (LSMS) '
-                f'ou de saisons peu pluvieuses (One Acre Fund) pendant la saison de culture.'
+                f'Le modèle voit un climat plutôt sec (faible humidité / peu de pluie) '
+                f'pendant une période de culture pour « {culture} », '
+                f'comme dans les exemples d’entraînement où doit_arroser=1.'
             )
             detail = (
-                'Attention : le label n’était pas « arroser aujourd’hui car humidité basse », '
-                'mais plutôt « cette parcelle était irriguée / saison sèche ».'
+                'Entraînement v2 : doit_arroser est lié au climat du mois '
+                '(humidité, pluie, proba) + saison de culture / irrigation / sécheresse.'
             )
         else:
             explication = (
-                f'Le modèle dit Non surtout parce que, dans les données d’entraînement, '
-                f'la majorité des parcelles sont pluviales (non irriguées). '
-                f'Environ 90 % des exemples ont doit_arroser=0. '
-                f'Il ignore largement « 0 mm de pluie aujourd’hui ».'
+                f'Le modèle estime qu’avec ce climat (humidité / pluie actuelles), '
+                f'un arrosage n’est pas nécessaire — ou vous n’êtes pas dans une '
+                f'fenêtre de culture typique pour « {culture} ».'
             )
             detail = (
-                'Cause données : LSMS.irrigated est rare (=1) ; One Acre Fund n’a pas de décision '
-                'd’arrosage journalière. D’où des Non fréquents même en saison sèche réelle.'
+                'Si tu mets saison sèche (humidité basse, 0 mm) et que ça dit encore Non, '
+                'change aussi le mois (ex. août) et une culture déjà semée en saison. '
+                'Le modèle a appris climat + mois ensemble.'
             )
 
     elif target == 'pret_a_recolter':

@@ -254,3 +254,27 @@ Ajoute :
 - core/services/ml_explain.py (pourquoi Oui/Non + lien datasets)
 - templates/ml/test.html + ml-test.css
 - Lien sidebar « Tester le ML »
+
+--- Session du 12/08/2026 12:14 ---
+Sujet : Curseur climat pluies <-> seche sur page Tester le ML
+
+Ajoute :
+- slider #ml-climate-slider dans templates/ml/test.html
+- static/js/ml-test-climate.js (interpolation humidite/pluie/proba/temp + mois aux extremes)
+- styles dans ml-test.css
+
+--- Session du 12/08/2026 12:28 ---
+Sujet : Re-entrainement ML avec meteo/climat par mois
+
+Fait :
+- build_agridec_dataset.py v2 : climat mensuel (pluies <-> seche) aligne curseur UI
+- doit_arroser / risques lies au climat du mois (plus de meteo neutre LSMS)
+- Correlation : doit_arroser si sec ~50.6% vs ~0.5% si non sec
+- Re-train : doit_arroser F1 0.70 (avant ~0.57), pluie_forte F1 0.95
+- Test : seche -> arroser=1 + secheresse=1 ; pluies -> arroser=0 + pluie_forte=1
+- ml_predictor recharge si .joblib change ; README adaptation v2
+
+--- Session du 12/08/2026 15:04 ---
+Sujet : Creation explication.txt (doc etudiant pipeline ML)
+
+Fichier : explication.txt a la racine — telechargement, scripts, dataset final, colonnes, F1, limites RDC, fichiers/methodes app
